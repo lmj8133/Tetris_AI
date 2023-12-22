@@ -20,6 +20,8 @@ SHAPES = [
     [[0, 1, 1], [1, 1, 0]]
 ]
 
+m = [-4, -2, 0, 2, 4]
+
 # Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -32,9 +34,12 @@ class Tetris:
     def __init__(self):
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
         self.current_piece = self.new_piece()
+        self.counter = 0
 
     def new_piece(self):
-        shape = random.choice(SHAPES)
+        #shape = random.choice(SHAPES)
+        shape = SHAPES[1]
+        self.state = 0
         piece = {'shape': shape, 'x': WIDTH // 2 - len(shape[0]) // 2, 'y': 0}
         return piece
 
@@ -81,7 +86,14 @@ class Tetris:
             self.board.insert(0, [0] * WIDTH)
 
     def update(self):
-        self.move_piece(0, 1)
+        # Rotate the piece if possible
+        #self.rotate_piece()
+        if self.state == 0:
+            self.move_piece(m[self.counter], 0)
+            self.counter += 1
+            if self.counter > 4:
+                self.counter = 0
+            self.state = 1
 
     def draw(self, screen):
         screen.fill(BLACK)
@@ -122,25 +134,12 @@ def main():
     tetris = Tetris()
 
     while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    tetris.move_piece(-1, 0)
-                elif event.key == pygame.K_RIGHT:
-                    tetris.move_piece(1, 0)
-                elif event.key == pygame.K_DOWN:
-                    tetris.move_piece(0, 1)
-                elif event.key == pygame.K_UP:
-                    tetris.rotate_piece()
-
         tetris.update()
 
         if tetris.collide(tetris.current_piece, offset=(0, 1)):
             tetris.merge_piece()
+        else:
+            tetris.move_piece(0, 1)
 
         tetris.draw(screen)
         pygame.display.flip()
