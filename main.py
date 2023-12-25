@@ -37,8 +37,8 @@ class Tetris:
         self.counter = 0
 
     def new_piece(self):
-        #shape = random.choice(SHAPES)
-        shape = SHAPES[1]
+        shape = random.choice(SHAPES)
+        #shape = SHAPES[1]
         self.state = 0
         piece = {'shape': shape, 'x': WIDTH // 2 - len(shape[0]) // 2, 'y': 0}
         return piece
@@ -125,26 +125,41 @@ class Tetris:
         for y in range(0, SCREEN_HEIGHT, BLOCK_SIZE):
             pygame.draw.line(screen, WHITE, (0, y), (SCREEN_WIDTH, y))
 
+class TetrisAI(Tetris):
+    def update(self):
+        # Randomly rotate or move the piece
+        action = random.choice(["rotate", "move_left", "move_right"])
+        if action == "rotate":
+            self.rotate_piece()
+        elif action == "move_left":
+            self.move_piece(-1, 0)
+        elif action == "move_right":
+            self.move_piece(1, 0)
+
+        # Move the piece downward
+        if self.collide(self.current_piece, offset=(0, 1)):
+            self.merge_piece()
+        else:
+            self.move_piece(0, 1)
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode(SCREEN_SIZE)
     pygame.display.set_caption('Tetris AI')
 
     clock = pygame.time.Clock()
-    tetris = Tetris()
+    tetris = TetrisAI()  # Use the TetrisAI class instead
 
     while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
         tetris.update()
-
-        if tetris.collide(tetris.current_piece, offset=(0, 1)):
-            tetris.merge_piece()
-        else:
-            tetris.move_piece(0, 1)
-
         tetris.draw(screen)
         pygame.display.flip()
         clock.tick(5)  # Adjust the speed of the game
 
 if __name__ == '__main__':
     main()
-
