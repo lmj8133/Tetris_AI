@@ -6,6 +6,7 @@ import torch.nn as nn
 import torchvision
 import torch.optim as optim
 import pickle
+import collections
 
 # Tetris constants
 WIDTH, HEIGHT = 10, 20
@@ -91,7 +92,7 @@ class Tetris:
         for line in lines_to_clear:
             del self.board[line]
             self.board.insert(0, [0] * WIDTH)
-            self.reward *= 2
+            self.reward += 4000
 
     def draw(self, screen):
         screen.fill(BLACK)
@@ -151,6 +152,44 @@ class TetrisAIWithANN(Tetris):
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
 
+        self.replay_buffer_size = 1000  # Choose an appropriate size for your replay buffer
+        self.replay_buffer = collections.deque(maxlen=self.replay_buffer_size)
+        self.target_update_frequency = 100  # Adjust the frequency based on your training needs
+        self.target_q_network = QNetwork(input_size, output_size)
+        self.target_q_network.load_state_dict(self.q_network.state_dict())
+        self.target_q_network.eval()
+
+        self.step_count = 0
+        self.highest_row = 0
+        self.height = 0
+
+    def calculate_hollow(self, height):
+        hollow = 0
+        for x in range(WIDTH):
+            for y in range(HEIGHT - height, HEIGHT):
+                if self.board[y][x] == 0:
+                    hollow += 1
+        return hollow
+
+    def get_height(self):
+        height = 19
+        for x in range(WIDTH):
+            for y in range(HEIGHT):
+                if self.board[y][x] == 1 and height > y:
+                    height = y
+        return HEIGHT - height
+
+    def update_replay_buffer(self, state_key, action, reward, new_state_key, done):
+        self.replay_buffer.append((state_key, action, reward, new_state_key, done))
+
+    def sample_from_replay_buffer(self, batch_size):
+        samples = random.sample(self.replay_buffer, batch_size)
+        return zip(*samples)
+
+    def update_target_network(self):
+        if self.step_count % self.target_update_frequency == 0:
+            self.target_q_network.load_state_dict(self.q_network.state_dict())
+
     def state_key(self):
         # Convert the board state to a flattened numpy array
         return np.array(self.board).flatten()
@@ -169,18 +208,23 @@ class TetrisAIWithANN(Tetris):
         new_state_key = torch.tensor(new_state_key, dtype=torch.float32).unsqueeze(0)
 
         q_values = self.q_network(state_key)
-        new_q_values = self.q_network(new_state_key)
+        new_q_values = self.target_q_network(new_state_key)
 
         max_future_q, _ = torch.max(new_q_values, dim=1)
         current_q = q_values[0, ["rotate", "move_left", "move_right"].index(action)]
 
         target_q = q_values.clone()
-        target_q[0, ["rotate", "move_left", "move_right"].index(action)] = (1 - self.learning_rate) * current_q.item() + self.learning_rate * (reward + self.discount_factor * max_future_q.item())
+        target_q[0, ["rotate", "move_left", "move_right"].index(action)] = (
+                1 - self.learning_rate
+        ) * current_q.item() + self.learning_rate * (reward + self.discount_factor * max_future_q.item())
 
         loss = self.criterion(q_values, target_q)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+        self.step_count += 1
+        self.update_target_network()
 
     def update(self):
         action = self.choose_action()
@@ -196,15 +240,40 @@ class TetrisAIWithANN(Tetris):
 
         if self.collide(self.current_piece, offset=(0, 1)):
             self.merge_piece()
+            self.height = self.get_height()
+            if (self.height > self.highest_row):
+                self.highest_row = self.height
+            if self.height > 3:
+                hollow = self.calculate_hollow(self.height)
+                self.reward -= hollow
+            else:
+                self.reward += 40
         else:
             self.move_piece(0, 1)
 
-        self.update_q_network(action, self.reward, new_state_key)
+        self.update_replay_buffer(
+            torch.tensor(self.state_key(), dtype=torch.float32).unsqueeze(0),
+            action,
+            self.reward,
+            new_state_key,
+            self.is_game_over(),
+        )
+
+        if len(self.replay_buffer) >= 50:
+            # Train the Q-network with a batch of experiences from the replay buffer
+            batch_size = 32
+            states, actions, rewards, new_states, dones = self.sample_from_replay_buffer(batch_size)
+
+            for i in range(batch_size):
+                self.update_q_network(actions[i], rewards[i], new_states[i])
+
     def reset(self):
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
         self.current_piece = self.new_piece()
         #self.counter = 0
         self.reward = 1
+        self.highest_row = 0
+        self.height = 0
 
     def is_game_over(self):
         # The game is over if the new piece collides with existing blocks at the top
@@ -256,6 +325,7 @@ def main(train_episodes=1000000):
         # Save the trained Q-network if needed
         # torch.save(tetris.q_network.state_dict(), f"q_network_episode_{episode + 1}.pth")
         #if reward < tetris.get_reward() and tetris.get_reward() > 16:
+        print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
         if reward < tetris.get_reward():
         #if tetris.get_reward() != 0:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
@@ -264,8 +334,8 @@ def main(train_episodes=1000000):
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
-            print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
-            pygame.quit()
+            #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
+            print("Highest Score!!!")
 
     pygame.quit()
 
