@@ -15,6 +15,7 @@ SCREEN_WIDTH = SCREEN_SIZE[0]
 SCREEN_HEIGHT = SCREEN_SIZE[1]
 BLOCK_SIZE = SCREEN_WIDTH // WIDTH
 FPS = 30
+GAME_SPEED = 100000
 
 # Tetris pieces
 SHAPES = [
@@ -43,6 +44,7 @@ class Tetris:
         self.current_piece = self.new_piece()
         #self.counter = 0
         self.reward = 1
+        self.clear_line = 0
 
     def new_piece(self):
         shape = random.choice(SHAPES)
@@ -92,7 +94,8 @@ class Tetris:
         for line in lines_to_clear:
             del self.board[line]
             self.board.insert(0, [0] * WIDTH)
-            self.reward += 4000
+            self.reward += 200
+            self.clear_line += 1
 
     def draw(self, screen):
         screen.fill(BLACK)
@@ -143,7 +146,7 @@ class TetrisAIWithANN(Tetris):
 
         # Define neural network parameters
         input_size = WIDTH * HEIGHT
-        output_size = 3  # Number of possible actions (rotate, move_left, move_right)
+        output_size = 4  # Number of possible actions (rotate, move_left, move_right)
         self.q_network = QNetwork(input_size, output_size)
         self.optimizer = optim.SGD(self.q_network.parameters(), lr=learning_rate)
         self.criterion = nn.MSELoss()
@@ -161,23 +164,53 @@ class TetrisAIWithANN(Tetris):
 
         self.step_count = 0
         self.highest_row = 0
+        self.lowest_row = 0
         self.height = 0
 
-    def calculate_hollow(self, height):
+    def calculate_parity(self, height, start_width, end_width):
+    #    for x in range(WIDTH):
+    #        for y in range(HEIGHT - height, HEIGHT):
+    #            if self.board[y][x] == 1:
+    #                if (y + x) % 2 == 0:
+        parity = 1
+        for x in range(start_width - 1, end_width):
+            for y in range(HEIGHT - height, HEIGHT):
+                if self.board[y][x] == 1:
+                    if (y + x) % 2 == 1:
+                        parity *= -1
+        return parity
+
+
+    def calculate_hollow(self, height, start_width, end_width):
         hollow = 0
-        for x in range(WIDTH):
+        for x in range(start_width - 1, end_width):
             for y in range(HEIGHT - height, HEIGHT):
                 if self.board[y][x] == 0:
                     hollow += 1
         return hollow
 
     def get_height(self):
-        height = 19
+        highest_height = HEIGHT
+        lowest_height = 0
         for x in range(WIDTH):
             for y in range(HEIGHT):
-                if self.board[y][x] == 1 and height > y:
-                    height = y
-        return HEIGHT - height
+                if self.board[y][x] == 1 and highest_height > y:
+                    highest_height = y
+                if self.board[y][x] == 0 and lowest_height < y:
+                    lowest_height = y
+        return [HEIGHT - lowest_height, HEIGHT - highest_height]
+
+    def get_width(self):
+        end_width = WIDTH
+        start_width = 0
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                if self.board[y][x] == 1:
+                    if end_width > x:
+                        end_width = x
+                    elif start_width < x:
+                        start_width = x
+        return [WIDTH - start_width, WIDTH - end_width]
 
     def update_replay_buffer(self, state_key, action, reward, new_state_key, done):
         self.replay_buffer.append((state_key, action, reward, new_state_key, done))
@@ -197,11 +230,11 @@ class TetrisAIWithANN(Tetris):
     def choose_action(self):
         state_key = torch.tensor(self.state_key(), dtype=torch.float32).unsqueeze(0)
         if random.uniform(0, 1) < self.exploration_rate:
-            return random.choice(["rotate", "move_left", "move_right"])
+            return random.choice(["rotate", "move_left", "move_right", "hard_drop"])
         else:
             with torch.no_grad():
                 q_values = self.q_network(state_key)
-            return max(zip(["rotate", "move_left", "move_right"], q_values[0]), key=lambda x: x[1])[0]
+            return max(zip(["rotate", "move_left", "move_right", "hard_drop"], q_values[0]), key=lambda x: x[1])[0]
 
     def update_q_network(self, action, reward, new_state_key):
         state_key = torch.tensor(self.state_key(), dtype=torch.float32).unsqueeze(0)
@@ -211,10 +244,11 @@ class TetrisAIWithANN(Tetris):
         new_q_values = self.target_q_network(new_state_key)
 
         max_future_q, _ = torch.max(new_q_values, dim=1)
-        current_q = q_values[0, ["rotate", "move_left", "move_right"].index(action)]
+        current_q = q_values[0, ["rotate", "move_left", "move_right", "hard_drop"].index(action)]
+
 
         target_q = q_values.clone()
-        target_q[0, ["rotate", "move_left", "move_right"].index(action)] = (
+        target_q[0, ["rotate", "move_left", "move_right", "hard_drop"].index(action)] = (
                 1 - self.learning_rate
         ) * current_q.item() + self.learning_rate * (reward + self.discount_factor * max_future_q.item())
 
@@ -235,19 +269,37 @@ class TetrisAIWithANN(Tetris):
             self.move_piece(-1, 0)
         elif action == "move_right":
             self.move_piece(1, 0)
+        elif action == "hard_drop":
+            #while(self.collide(self.current_piece, offset=(0,1)) == False):
+            #    self.move_piece(0, 1)
+            offset = 0
+            while not self.collide(self.current_piece, offset=(0, offset + 1)):
+                offset += 1
+            # Move the piece to the lowest possible position instantly
+            self.move_piece(0, offset)
 
         new_state_key = self.state_key()
 
         if self.collide(self.current_piece, offset=(0, 1)):
             self.merge_piece()
             self.height = self.get_height()
-            if (self.height > self.highest_row):
-                self.highest_row = self.height
-            if self.height > 3:
-                hollow = self.calculate_hollow(self.height)
-                self.reward -= hollow
+            width = self.get_width()
+            # Increase score if height doesn't change.
+            if (self.height[1] > self.highest_row):
+                self.highest_row = self.height[1]
+                self.reward -= 20
             else:
-                self.reward += 40
+                self.reward += 100
+            # Increase score as lower bound increases.
+            if (self.height[0] > self.lowest_row):
+                self.lowest_row = self.height[0]
+                self.reward += 200
+            else:
+                self.reward -= 40
+            hollow = self.calculate_hollow(self.highest_row, width[0], width[1])
+            if self.calculate_parity(self.highest_row, width[0], width[1]) == -1:
+                self.reward -= 50
+            self.reward -= hollow
         else:
             self.move_piece(0, 1)
 
@@ -274,6 +326,7 @@ class TetrisAIWithANN(Tetris):
         self.reward = 1
         self.highest_row = 0
         self.height = 0
+        self.clear_line = 0
 
     def is_game_over(self):
         # The game is over if the new piece collides with existing blocks at the top
@@ -290,13 +343,14 @@ def main(train_episodes=1000000):
     screen = pygame.display.set_mode(SCREEN_SIZE)
     pygame.display.set_caption('Tetris AI with ANN')
     reward = 1
+    clear_line = 0
 
     clock = pygame.time.Clock()
     tetris = TetrisAIWithANN()
 
     # Load pre-trained weights
-    tetris.q_network.load_state_dict(torch.load("q_network.pth"))
-    tetris.q_network.eval()  # Set the model to evaluation mode
+    #tetris.q_network.load_state_dict(torch.load("q_network.pth"))
+    #tetris.q_network.eval()  # Set the model to evaluation mode
 
     for episode in range(train_episodes):
         tetris.reset()
@@ -310,7 +364,7 @@ def main(train_episodes=1000000):
             tetris.update()
             tetris.draw(screen)
             pygame.display.flip()
-            clock.tick(10000000)
+            clock.tick(GAME_SPEED)
 
         # Training loop
         #reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
@@ -325,17 +379,33 @@ def main(train_episodes=1000000):
         # Save the trained Q-network if needed
         # torch.save(tetris.q_network.state_dict(), f"q_network_episode_{episode + 1}.pth")
         #if reward < tetris.get_reward() and tetris.get_reward() > 16:
-        print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
+        if reward == 1:
+            reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
+            print("First Data")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network.pth")
+            tetris.q_network.load_state_dict(torch.load("q_network.pth"))
+            tetris.q_network.eval()  # Set the model to evaluation mode
+            #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
+
+        print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}, clear: {tetris.clear_line}")
         if reward < tetris.get_reward():
         #if tetris.get_reward() != 0:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
             #torch.save(tetris.q_network.state_dict(), "q_network.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
             #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
             print("Highest Score!!!")
+
+        if clear_line < tetris.clear_line:
+            print("New Record!!!")
+            clear_line = tetris.clear_line
+            torch.save(tetris.q_network.state_dict(), f"q_network.pth")
+            tetris.q_network.load_state_dict(torch.load("q_network.pth"))
+            tetris.q_network.eval()  # Set the model to evaluation mode
 
     pygame.quit()
 
