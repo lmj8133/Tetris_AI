@@ -27,6 +27,10 @@ SHAPES = [
     [[1, 1, 0], [0, 1, 1]],
     [[0, 1, 1], [1, 1, 0]]
 ]
+#SHAPES = [
+#    [[1, 1, 1, 1]],
+#    [[1, 1], [1, 1]]
+#]
 
 m = [-4, -2, 0, 2, 4]
 
@@ -94,8 +98,11 @@ class Tetris:
         for line in lines_to_clear:
             del self.board[line]
             self.board.insert(0, [0] * WIDTH)
-            self.reward += 200
             self.clear_line += 1
+            if self.reward < 0:
+                self.reward = 0
+
+            self.reward += (200 * (1.01 ** (self.clear_line)))
 
     def draw(self, screen):
         screen.fill(BLACK)
@@ -130,23 +137,27 @@ class Tetris:
 class QNetwork(nn.Module):
     def __init__(self, input_size, output_size):
         super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(input_size, 64)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(64, output_size)
+        self.fc1 = nn.Linear(input_size, 128)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(128, 64)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(64, output_size)
 
     def forward(self, x):
         x = self.fc1(x)
-        x = self.relu(x)
+        x = self.relu1(x)
         x = self.fc2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
         return x
 
 class TetrisAIWithANN(Tetris):
-    def __init__(self, learning_rate=0.1, discount_factor=0.9, exploration_rate=0.1):
+    def __init__(self, learning_rate=0.01, discount_factor=0.9, exploration_rate=0.1):
         super().__init__()
 
         # Define neural network parameters
         input_size = WIDTH * HEIGHT
-        output_size = 4  # Number of possible actions (rotate, move_left, move_right)
+        output_size = 5  # Number of possible actions (rotate, move_left, move_right, hard_drop, do_nothing)
         self.q_network = QNetwork(input_size, output_size)
         self.optimizer = optim.SGD(self.q_network.parameters(), lr=learning_rate)
         self.criterion = nn.MSELoss()
@@ -155,9 +166,9 @@ class TetrisAIWithANN(Tetris):
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
 
-        self.replay_buffer_size = 1000  # Choose an appropriate size for your replay buffer
+        self.replay_buffer_size = 5000  # or a size that fits your memory constraints
         self.replay_buffer = collections.deque(maxlen=self.replay_buffer_size)
-        self.target_update_frequency = 100  # Adjust the frequency based on your training needs
+        self.target_update_frequency = 200  # Adjust the frequency based on your training needs
         self.target_q_network = QNetwork(input_size, output_size)
         self.target_q_network.load_state_dict(self.q_network.state_dict())
         self.target_q_network.eval()
@@ -168,10 +179,6 @@ class TetrisAIWithANN(Tetris):
         self.height = 0
 
     def calculate_parity(self, height, start_width, end_width):
-    #    for x in range(WIDTH):
-    #        for y in range(HEIGHT - height, HEIGHT):
-    #            if self.board[y][x] == 1:
-    #                if (y + x) % 2 == 0:
         parity = 1
         for x in range(start_width - 1, end_width):
             for y in range(HEIGHT - height, HEIGHT):
@@ -216,12 +223,18 @@ class TetrisAIWithANN(Tetris):
         self.replay_buffer.append((state_key, action, reward, new_state_key, done))
 
     def sample_from_replay_buffer(self, batch_size):
+        if len(self.replay_buffer) < batch_size:
+            return zip(*self.replay_buffer)
+
         samples = random.sample(self.replay_buffer, batch_size)
-        return zip(*samples)
+        return map(list, zip(*samples))
 
     def update_target_network(self):
         if self.step_count % self.target_update_frequency == 0:
             self.target_q_network.load_state_dict(self.q_network.state_dict())
+
+    def decay_exploration_rate(self, episode):
+        self.exploration_rate = max(0.1, 1.0 - 0.0001 * episode)  # Adjust the decay rate as needed
 
     def state_key(self):
         # Convert the board state to a flattened numpy array
@@ -230,11 +243,13 @@ class TetrisAIWithANN(Tetris):
     def choose_action(self):
         state_key = torch.tensor(self.state_key(), dtype=torch.float32).unsqueeze(0)
         if random.uniform(0, 1) < self.exploration_rate:
-            return random.choice(["rotate", "move_left", "move_right", "hard_drop"])
+            return random.choice(["rotate", "move_left", "move_right", "hard_drop", "do_nothing"])
+            #return random.choice(["move_left", "move_right"])
         else:
             with torch.no_grad():
                 q_values = self.q_network(state_key)
-            return max(zip(["rotate", "move_left", "move_right", "hard_drop"], q_values[0]), key=lambda x: x[1])[0]
+            return max(zip(["rotate", "move_left", "move_right", "hard_drop", "do_nothing"], q_values[0]), key=lambda x: x[1])[0]
+            #return max(zip(["move_left", "move_right"], q_values[0]), key=lambda x: x[1])[0]
 
     def update_q_network(self, action, reward, new_state_key):
         state_key = torch.tensor(self.state_key(), dtype=torch.float32).unsqueeze(0)
@@ -244,12 +259,15 @@ class TetrisAIWithANN(Tetris):
         new_q_values = self.target_q_network(new_state_key)
 
         max_future_q, _ = torch.max(new_q_values, dim=1)
-        current_q = q_values[0, ["rotate", "move_left", "move_right", "hard_drop"].index(action)]
+        current_q = q_values[0, ["rotate", "move_left", "move_right", "hard_drop", "do_nothing"].index(action)]
+        #current_q = q_values[0, ["move_left", "move_right"].index(action)]
 
 
         target_q = q_values.clone()
-        target_q[0, ["rotate", "move_left", "move_right", "hard_drop"].index(action)] = (
+        target_q[0, ["rotate", "move_left", "move_right", "hard_drop", "do_nothing"].index(action)] = (
                 1 - self.learning_rate
+        #target_q[0, ["move_left", "move_right"].index(action)] = (
+        #        1 - self.learning_rate
         ) * current_q.item() + self.learning_rate * (reward + self.discount_factor * max_future_q.item())
 
         loss = self.criterion(q_values, target_q)
@@ -260,6 +278,7 @@ class TetrisAIWithANN(Tetris):
         self.step_count += 1
         self.update_target_network()
 
+# Inside the update function of the TetrisAIWithANN class
     def update(self):
         action = self.choose_action()
 
@@ -270,8 +289,6 @@ class TetrisAIWithANN(Tetris):
         elif action == "move_right":
             self.move_piece(1, 0)
         elif action == "hard_drop":
-            #while(self.collide(self.current_piece, offset=(0,1)) == False):
-            #    self.move_piece(0, 1)
             offset = 0
             while not self.collide(self.current_piece, offset=(0, offset + 1)):
                 offset += 1
@@ -284,13 +301,11 @@ class TetrisAIWithANN(Tetris):
             self.merge_piece()
             self.height = self.get_height()
             width = self.get_width()
-            # Increase score if height doesn't change.
             if (self.height[1] > self.highest_row):
                 self.highest_row = self.height[1]
                 self.reward -= 20
             else:
                 self.reward += 100
-            # Increase score as lower bound increases.
             if (self.height[0] > self.lowest_row):
                 self.lowest_row = self.height[0]
                 self.reward += 200
@@ -313,13 +328,16 @@ class TetrisAIWithANN(Tetris):
 
         if len(self.replay_buffer) >= 50:
             # Train the Q-network with a batch of experiences from the replay buffer
-            batch_size = 32
+            batch_size = 64
             states, actions, rewards, new_states, dones = self.sample_from_replay_buffer(batch_size)
 
-            for i in range(batch_size):
-                self.update_q_network(actions[i], rewards[i], new_states[i])
+            # Add a check to ensure the lengths are consistent
+            if len(actions) == len(rewards) == len(new_states):
+                for i in range(len(actions)):
+                    self.update_q_network(actions[i], rewards[i], new_states[i])
 
-    def reset(self):
+    def reset(self, episode):
+        self.decay_exploration_rate(episode)
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
         self.current_piece = self.new_piece()
         #self.counter = 0
@@ -353,7 +371,7 @@ def main(train_episodes=1000000):
     #tetris.q_network.eval()  # Set the model to evaluation mode
 
     for episode in range(train_episodes):
-        tetris.reset()
+        tetris.reset(episode)
 
         while not tetris.is_game_over():
             for event in pygame.event.get():
@@ -403,6 +421,7 @@ def main(train_episodes=1000000):
         if clear_line < tetris.clear_line:
             print("New Record!!!")
             clear_line = tetris.clear_line
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
