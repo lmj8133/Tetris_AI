@@ -393,7 +393,7 @@ def main(train_episodes=1000000):
         if reward == 1:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
             print("First Data")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + 1}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
@@ -404,7 +404,7 @@ def main(train_episodes=1000000):
         #if tetris.get_reward() != 0:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
             #torch.save(tetris.q_network.state_dict(), "q_network.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + 1}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
@@ -414,7 +414,7 @@ def main(train_episodes=1000000):
         if clear_line < tetris.clear_line:
             print("New Record!!!")
             clear_line = tetris.clear_line
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + 1}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
