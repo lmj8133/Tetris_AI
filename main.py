@@ -15,7 +15,7 @@ SCREEN_WIDTH = SCREEN_SIZE[0]
 SCREEN_HEIGHT = SCREEN_SIZE[1]
 BLOCK_SIZE = SCREEN_WIDTH // WIDTH
 FPS = 30
-GAME_SPEED = 100000
+GAME_SPEED = 1000
 
 # Tetris pieces
 SHAPES = [
@@ -197,15 +197,12 @@ class TetrisAIWithANN(Tetris):
         return hollow
 
     def get_height(self):
-        highest_height = HEIGHT
-        lowest_height = 0
+        height = HEIGHT
         for x in range(WIDTH):
             for y in range(HEIGHT):
-                if self.board[y][x] == 1 and highest_height > y:
-                    highest_height = y
-                if self.board[y][x] == 0 and lowest_height < y:
-                    lowest_height = y
-        return [HEIGHT - lowest_height, HEIGHT - highest_height]
+                if self.board[y][x] == 1 and height > y:
+                    height = y
+        return HEIGHT - height
 
     def get_width(self):
         end_width = WIDTH
@@ -301,20 +298,16 @@ class TetrisAIWithANN(Tetris):
             self.merge_piece()
             self.height = self.get_height()
             width = self.get_width()
-            if (self.height[1] > self.highest_row):
-                self.highest_row = self.height[1]
-                self.reward -= 20
-            else:
-                self.reward += 100
-            if (self.height[0] > self.lowest_row):
-                self.lowest_row = self.height[0]
-                self.reward += 200
-            else:
-                self.reward -= 40
-            hollow = self.calculate_hollow(self.highest_row, width[0], width[1])
-            if self.calculate_parity(self.highest_row, width[0], width[1]) == -1:
-                self.reward -= 50
-            self.reward -= hollow
+            if (self.height < 20):
+                if (self.height > self.highest_row):
+                    self.highest_row = self.height
+                    self.reward -= 100
+                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1])
+                else:
+                    self.reward += 200
+                    self.reward -= self.hollow
+                if self.calculate_parity(self.highest_row, width[0], width[1]) == -1:
+                    self.reward -= 50
         else:
             self.move_piece(0, 1)
 
