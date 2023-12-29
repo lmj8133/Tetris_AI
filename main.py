@@ -178,6 +178,26 @@ class TetrisAIWithANN(Tetris):
         self.lowest_row = 0
         self.height = 0
 
+    def calculate_reward(self):
+        lines_cleared = self.clear_line
+        holes = self.calculate_holes()  # Method to count holes
+
+        reward = 100 * (2 ** lines_cleared) - 50 * holes
+        self.clear_line = 0
+        return reward
+
+    # New function to calculate holes in the Tetris grid
+    def calculate_holes(self):
+        holes = 0
+        for x in range(WIDTH):
+            block = False
+            for y in range(HEIGHT):
+                if self.board[y][x]:
+                    block = True
+                elif block and not self.board[y][x]:
+                    holes += 1
+        return holes
+
     def calculate_parity(self, height, start_width, end_width):
         parity = 1
         for x in range(start_width - 1, end_width):
@@ -231,7 +251,7 @@ class TetrisAIWithANN(Tetris):
             self.target_q_network.load_state_dict(self.q_network.state_dict())
 
     def decay_exploration_rate(self, episode):
-        self.exploration_rate = max(0.1, 1.0 - 0.0001 * episode)  # Adjust the decay rate as needed
+        self.exploration_rate = max(0.01, self.exploration_rate * 0.995)
 
     def state_key(self):
         # Convert the board state to a flattened numpy array
@@ -390,6 +410,7 @@ def main(train_episodes=1000000):
         # Save the trained Q-network if needed
         # torch.save(tetris.q_network.state_dict(), f"q_network_episode_{episode + 1}.pth")
         #if reward < tetris.get_reward() and tetris.get_reward() > 16:
+        tetris.reward += tetris.calculate_reward()  # Update total reward using the new function
         if reward == 1:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
             print("First Data")
