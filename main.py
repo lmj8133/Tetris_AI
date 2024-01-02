@@ -100,9 +100,9 @@ class Tetris:
             self.board.insert(0, [0] * WIDTH)
             self.clear_line += 1
             if self.reward < 0:
-                self.reward = 0
+                self.reward *= -1
 
-            self.reward += (200 * (1.01 ** (self.clear_line)))
+            self.reward += (500 * (1.01 ** (self.clear_line)))
 
     def draw(self, screen):
         screen.fill(BLACK)
@@ -183,7 +183,6 @@ class TetrisAIWithANN(Tetris):
         holes = self.calculate_holes()  # Method to count holes
 
         reward = 100 * (2 ** lines_cleared) - 50 * holes
-        self.clear_line = 0
         return reward
 
     # New function to calculate holes in the Tetris grid
