@@ -42,19 +42,83 @@ BLOCK_COLORS = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255),
                 #yellow        #orange        #purple        #aqua
                 (255, 255, 0), (255, 165, 0), (128, 0, 128), (0, 255, 255)]
 
+I_SHAPE = [[1, 1, 1, 1]]
+O_SHAPE = [[1, 1], [1, 1]]
+T_SHAPE = [[0, 1, 0], [1, 1, 1]]
+J_SHAPE = [[1, 0, 0], [1, 1, 1]]
+L_SHAPE = [[0, 0, 1], [1, 1, 1]]
+Z_SHAPE = [[1, 1, 0], [0, 1, 1]]
+S_SHAPE = [[0, 1, 1], [1, 1, 0]]
+
+PIECE_NAME_TO_INT = {
+    'I': 0,
+    'O': 1,
+    'T': 2,
+    'J': 3,
+    'L': 4,
+    'S': 5,
+    'Z': 6
+}
+# Add color constants for each shape
+AQUA = (0, 255, 255)    # I shape
+YELLOW = (255, 255, 0)   # O shape
+PURPLE = (128, 0, 128)   # T shape
+BLUE = (0, 0, 255)       # J shape
+RED = (255, 0, 0)        # L shape
+GREEN = (0, 255, 0)      # S shape
+ORANGE = (255, 165, 0)   # Z shape
+#AQUA = WHITE    # I shape
+#YELLOW = WHITE   # O shape
+#PURPLE = WHITE   # T shape
+#BLUE = WHITE       # J shape
+#RED = WHITE        # L shape
+#GREEN = WHITE      # S shape
+#ORANGE = WHITE   # Z shape
+
+# Colors for each shape
+SHAPE_COLORS = [AQUA, YELLOW, PURPLE, BLUE, RED, GREEN, ORANGE]
+
+class Piece:
+    def __init__(self, name, shape, color):
+        self.name = name
+        self.shape = shape
+        self.color = color
+
 class Tetris:
     def __init__(self):
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
-        self.current_piece = self.new_piece()
-        #self.counter = 0
+        self.color_board = [[0] * WIDTH for _ in range(HEIGHT)]
+        self.srs_index = 0
+        self.srs_array_index = 0
+        self.I = Piece('I', I_SHAPE, AQUA)
+        self.O = Piece('O', O_SHAPE, YELLOW)
+        self.T = Piece('T', T_SHAPE, PURPLE)
+        self.J = Piece('J', J_SHAPE, BLUE)
+        self.L = Piece('L', L_SHAPE, ORANGE)
+        self.S = Piece('S', S_SHAPE, GREEN)
+        self.Z = Piece('Z', Z_SHAPE, RED)
+        self.shapes_array = [[self.I, self.O, self.T, self.J, self.L, self.S, self.Z], [self.I, self.O, self.T, self.J, self.L, self.S, self.Z]]
+        #self.current_piece = self.new_piece()
         self.reward = 1
         self.clear_line = 0
 
     def new_piece(self):
-        shape = random.choice(SHAPES)
-        #shape = SHAPES[1]
-        self.state = 0
-        piece = {'shape': shape, 'x': WIDTH // 2 - len(shape[0]) // 2, 'y': 0}
+        #shape = random.choice(self.shapes_array)
+        #piece = {'shape': shape.shape, 'x': WIDTH // 2 - len(shape.shape[0]) // 2, 'y': 0, 'color': shape.color, 'name': shape.name}
+        #print(shape.name)
+        #return piece
+        if self.srs_index == 0:
+            random.shuffle(self.shapes_array[self.srs_array_index])  # Shuffle in place without reassignment
+            print('----')
+            print(f"array{self.srs_array_index}")
+            self.srs_array_index ^= 1
+        shape = self.shapes_array[0][self.srs_index]
+        print(shape.name)
+        piece = {'shape': shape.shape, 'x': WIDTH // 2 - len(shape.shape[0]) // 2, 'y': 0, 'color': shape.color, 'name': shape.name}
+        if self.srs_index == 6:
+            self.srs_index = 0
+        else:
+            self.srs_index += 1
         return piece
 
     def collide(self, piece, offset=(0, 0)):
@@ -156,7 +220,7 @@ class TetrisAIWithANN(Tetris):
         super().__init__()
 
         # Define neural network parameters
-        input_size = WIDTH * HEIGHT
+        input_size = WIDTH * HEIGHT + 2
         output_size = 5  # Number of possible actions (rotate, move_left, move_right, hard_drop, do_nothing)
         self.q_network = QNetwork(input_size, output_size)
         self.optimizer = optim.SGD(self.q_network.parameters(), lr=learning_rate)
@@ -254,7 +318,33 @@ class TetrisAIWithANN(Tetris):
 
     def state_key(self):
         # Convert the board state to a flattened numpy array
-        return np.array(self.board).flatten()
+        board_state = np.array(self.board).flatten()
+
+        # Include the number of cleared lines as part of the state
+        lines_cleared_state = np.array([self.clear_line])
+
+        # Convert the name of the current piece to an integer
+        current_piece_state = np.array([PIECE_NAME_TO_INT[self.current_piece['name']]])
+
+        # Combine the board state and the lines cleared into a single state representation
+        combined_state = np.concatenate([board_state, lines_cleared_state, current_piece_state])
+        return combined_state
+
+    #def state_key(self):
+    #    # Convert the board state to a flattened numpy array
+    #    board_state = np.array(self.board).flatten()
+
+    #    # Include the number of cleared lines as part of the state
+    #    lines_cleared_state = np.array([self.clear_line])
+    #    current_piece_state = np.array([self.current_piece['name']])
+
+    #    # Combine the board state and the lines cleared into a single state representation
+    #    combined_state = np.concatenate([board_state, lines_cleared_state, current_piece_state])
+    #    return combined_state
+
+#    def state_key(self):
+#        # Convert the board state to a flattened numpy array
+#        return np.array(self.board).flatten()
 
     def choose_action(self):
         state_key = torch.tensor(self.state_key(), dtype=torch.float32).unsqueeze(0)
@@ -349,14 +439,17 @@ class TetrisAIWithANN(Tetris):
                     self.update_q_network(actions[i], rewards[i], new_states[i])
 
     def reset(self, episode):
+        print("++++++++++++++")
         self.decay_exploration_rate(episode)
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
-        self.current_piece = self.new_piece()
         #self.counter = 0
         self.reward = 1
         self.highest_row = 0
         self.height = 0
         self.clear_line = 0
+        self.srs_index = 0
+        self.srs_array_index = 0
+        self.current_piece = self.new_piece()
 
     def is_game_over(self):
         # The game is over if the new piece collides with existing blocks at the top
@@ -384,7 +477,6 @@ def main(train_episodes=1000000):
 
     for episode in range(train_episodes):
         tetris.reset(episode)
-
         while not tetris.is_game_over():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -403,8 +495,8 @@ def main(train_episodes=1000000):
         # You may want to adjust the reward mechanism based on your specific objectives
 
         # Training the Q-network
-        for _ in range(50):  # Adjust the number of training steps per episode
-            tetris.update()  # Update the Q-network through interactions with the environment
+        #for _ in range(50):  # Adjust the number of training steps per episode
+            #tetris.update()  # Update the Q-network through interactions with the environment
 
         # Save the trained Q-network if needed
         # torch.save(tetris.q_network.state_dict(), f"q_network_episode_{episode + 1}.pth")
