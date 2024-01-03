@@ -275,22 +275,11 @@ class TetrisAIWithANN(Tetris):
 
     def calculate_reward(self):
         lines_cleared = self.clear_line
-        holes = self.calculate_holes()  # Method to count holes
+        hollows = self.calculate_hollow(HEIGHT, 1, WIDTH, mode_hollow)
 
-        reward = 100 * (2 ** lines_cleared) - 50 * holes
+        #reward = 100 * (2 ** lines_cleared) - 50 * hollows
+        reward = 500 * (2 ** lines_cleared)
         return reward
-
-    # New function to calculate holes in the Tetris grid
-    def calculate_holes(self):
-        holes = 0
-        for x in range(WIDTH):
-            block = False
-            for y in range(HEIGHT):
-                if self.board[y][x]:
-                    block = True
-                elif block and not self.board[y][x]:
-                    holes += 1
-        return holes
 
     def calculate_parity(self, height, start_width, end_width):
         parity = 1
@@ -303,11 +292,14 @@ class TetrisAIWithANN(Tetris):
 
 
     def calculate_hollow(self, height, start_width, end_width, mode):
+        #print(f"S: {WIDTH - start_width}, E: {WIDTH - end_width}")
         hollow = 0
-        for x in range(start_width - 1, end_width):
+        for x in range(WIDTH - end_width, WIDTH - start_width + 1):
             for y in range(HEIGHT - height, HEIGHT):
+                #print(f"({x}, {y}) = {self.board[y][x]}")
                 if self.board[y][x] == mode:
-                    hollow += 1
+                    hollow += y
+        #print('---')
         return hollow
 
     def get_height(self):
