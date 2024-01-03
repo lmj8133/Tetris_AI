@@ -101,24 +101,38 @@ class Tetris:
         #self.current_piece = self.new_piece()
         self.reward = 1
         self.clear_line = 0
+        self.upcoming_pieces = collections.deque(maxlen=7)
+        #self.initialize_upcoming_pieces()
 
-    def new_piece(self):
-        #shape = random.choice(self.shapes_array)
-        #piece = {'shape': shape.shape, 'x': WIDTH // 2 - len(shape.shape[0]) // 2, 'y': 0, 'color': shape.color, 'name': shape.name}
-        #print(shape.name)
-        #return piece
-        if self.srs_index == 0:
-            random.shuffle(self.shapes_array[self.srs_array_index])  # Shuffle in place without reassignment
-            print('----')
-            print(f"array{self.srs_array_index}")
-            self.srs_array_index ^= 1
-        shape = self.shapes_array[0][self.srs_index]
-        print(shape.name)
-        piece = {'shape': shape.shape, 'x': WIDTH // 2 - len(shape.shape[0]) // 2, 'y': 0, 'color': shape.color, 'name': shape.name}
+
+    def initialize_upcoming_pieces(self):
+        random.shuffle(self.shapes_array[self.srs_array_index])  # Shuffle in place without reassignment
+        i = 0
+        for _ in range(7):
+            #print(f"idx{self.srs_array_index}: {self.shapes_array[self.srs_array_index][i].name}")
+            #i += 1
+            self.add_new_piece_to_upcoming()
+
+
+    def add_new_piece_to_upcoming(self):
+        piece = self.shapes_array[self.srs_array_index][self.srs_index]
+        self.upcoming_pieces.append(piece)
         if self.srs_index == 6:
             self.srs_index = 0
+            self.srs_array_index ^= 1
+            random.shuffle(self.shapes_array[self.srs_array_index])  # Shuffle in place without reassignment
+            #i = 0
+            #for _ in range(7):
+            #    print(f"idx{self.srs_array_index}: {self.shapes_array[self.srs_array_index][i].name}")
+            #    i += 1
         else:
             self.srs_index += 1
+
+    def new_piece(self):
+        next_piece = self.upcoming_pieces.popleft()
+        self.add_new_piece_to_upcoming()
+        #print(next_piece.name)
+        piece = {'shape': next_piece.shape, 'x': WIDTH // 2 - len(next_piece.shape[0]) // 2, 'y': 0, 'color': next_piece.color, 'name': next_piece.name}
         return piece
 
     def collide(self, piece, offset=(0, 0)):
@@ -166,11 +180,26 @@ class Tetris:
             if self.reward < 0:
                 self.reward *= -1
 
-            self.reward += (500 * (1.01 ** (self.clear_line)))
+            self.reward += (3000 * (1.01 ** (self.clear_line)))
+
+    def draw_upcoming_pieces(self, screen):
+        x_start = SCREEN_WIDTH + 10  # Adjust as needed
+        y_start = 10  # Adjust as needed
+        gap = 100  # Gap between pieces, adjust as needed
+
+        for i, piece in enumerate(self.upcoming_pieces):
+            shape = piece.shape
+            color = piece.color
+            for y, row in enumerate(shape):
+                for x, value in enumerate(row):
+                    if value:
+                        pygame.draw.rect(screen, color, (x_start + x * BLOCK_SIZE, y_start + i * gap + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+                        pygame.draw.rect(screen, BLACK, (x_start + x * BLOCK_SIZE, y_start + i * gap + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
 
     def draw(self, screen):
         screen.fill(BLACK)
         self.draw_grid(screen)
+        self.draw_upcoming_pieces(screen)
 
         # Draw filled blocks
         for y, row in enumerate(self.board):
@@ -439,7 +468,7 @@ class TetrisAIWithANN(Tetris):
                     self.update_q_network(actions[i], rewards[i], new_states[i])
 
     def reset(self, episode):
-        print("++++++++++++++")
+        #print("++++++++++++++")
         self.decay_exploration_rate(episode)
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
         #self.counter = 0
@@ -448,7 +477,8 @@ class TetrisAIWithANN(Tetris):
         self.height = 0
         self.clear_line = 0
         self.srs_index = 0
-        self.srs_array_index = 0
+        #self.srs_array_index = 0
+        self.initialize_upcoming_pieces()
         self.current_piece = self.new_piece()
 
     def is_game_over(self):
@@ -463,7 +493,8 @@ class TetrisAIWithANN(Tetris):
 
 def main(train_episodes=1000000):
     pygame.init()
-    screen = pygame.display.set_mode(SCREEN_SIZE)
+    #screen = pygame.display.set_mode(SCREEN_SIZE)
+    screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
     pygame.display.set_caption('Tetris AI with ANN')
     reward = 1
     clear_line = 0
