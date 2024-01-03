@@ -103,6 +103,7 @@ class Tetris:
         #self.current_piece = self.new_piece()
         self.reward = 1
         self.clear_line = 0
+        self.retarded = 0
         self.upcoming_pieces = collections.deque(maxlen=7)
         #self.initialize_upcoming_pieces()
 
@@ -337,7 +338,11 @@ class TetrisAIWithANN(Tetris):
             self.target_q_network.load_state_dict(self.q_network.state_dict())
 
     def decay_exploration_rate(self, episode):
-        self.exploration_rate = max(0.01, self.exploration_rate * 0.995)
+        if (self.retarded / (episode + 1)) > 0.6:
+            self.exploration_rate = 0.1
+            self.retarded = 0
+        else:
+            self.exploration_rate = max(0.01, self.exploration_rate * 0.995)
 
     def state_key(self):
         # Convert the board state to a flattened numpy array
@@ -528,6 +533,8 @@ def main(train_episodes=1000000):
         # Save the trained Q-network if needed
         # torch.save(tetris.q_network.state_dict(), f"q_network_episode_{episode + 1}.pth")
         #if reward < tetris.get_reward() and tetris.get_reward() > 16:
+        if tetris.exploration_rate == 0.01:
+            tetris.retarded += 1
         tetris.reward += tetris.calculate_reward()  # Update total reward using the new function
         if reward == 1:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
@@ -536,9 +543,9 @@ def main(train_episodes=1000000):
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
+            tetris.retarded = 0
             #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
 
-        print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}, clear: {tetris.clear_line}")
         if reward < tetris.get_reward():
         #if tetris.get_reward() != 0:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
@@ -547,6 +554,7 @@ def main(train_episodes=1000000):
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
+            tetris.retarded = 0
             #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
             print("Highest Score!!!")
 
@@ -557,6 +565,9 @@ def main(train_episodes=1000000):
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
+            tetris.retarded = 0
+
+        print(f"Episode {episode + 1}/{train_episodes} - Reward: {tetris.get_reward()}, Clear: {tetris.clear_line}, Retarded Rate: {tetris.retarded / (episode + 1)}")
 
     pygame.quit()
 
