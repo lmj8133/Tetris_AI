@@ -16,6 +16,8 @@ SCREEN_HEIGHT = SCREEN_SIZE[1]
 BLOCK_SIZE = SCREEN_WIDTH // WIDTH
 FPS = 30
 GAME_SPEED = 1000
+mode_hollow = 0
+mode_block = 1
 
 # Tetris pieces
 SHAPES = [
@@ -245,7 +247,7 @@ class QNetwork(nn.Module):
         return x
 
 class TetrisAIWithANN(Tetris):
-    def __init__(self, learning_rate=0.01, discount_factor=0.9, exploration_rate=0.1):
+    def __init__(self, learning_rate=0.001, discount_factor=0.9, exploration_rate=0.1):
         super().__init__()
 
         # Define neural network parameters
@@ -300,11 +302,11 @@ class TetrisAIWithANN(Tetris):
         return parity
 
 
-    def calculate_hollow(self, height, start_width, end_width):
+    def calculate_hollow(self, height, start_width, end_width, mode):
         hollow = 0
         for x in range(start_width - 1, end_width):
             for y in range(HEIGHT - height, HEIGHT):
-                if self.board[y][x] == 0:
+                if self.board[y][x] == mode:
                     hollow += 1
         return hollow
 
@@ -440,10 +442,12 @@ class TetrisAIWithANN(Tetris):
                 if (self.height > self.highest_row):
                     self.highest_row = self.height
                     self.reward -= 100
-                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1])
+                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1], mode_hollow)
+                    self.reward -= self.hollow
                 else:
                     self.reward += 200
-                    self.reward -= self.hollow
+                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1], mode_block)
+                    self.reward += self.hollow
                 if self.calculate_parity(self.highest_row, width[0], width[1]) == -1:
                     self.reward -= 50
         else:
