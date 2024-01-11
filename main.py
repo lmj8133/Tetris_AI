@@ -9,8 +9,8 @@ import pickle
 import collections
 
 # Tetris constants
-WIDTH, HEIGHT = 10, 20
-SCREEN_SIZE = (300, 600)
+WIDTH, HEIGHT = 10, 1
+SCREEN_SIZE = (300, 30)
 SCREEN_WIDTH = SCREEN_SIZE[0]
 SCREEN_HEIGHT = SCREEN_SIZE[1]
 BLOCK_SIZE = SCREEN_WIDTH // WIDTH
@@ -44,8 +44,8 @@ m = [-4, -2, 0, 2, 4]
 # Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-                #black     #red         #green       #blue
-BLOCK_COLORS = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255),
+                #red         #green       #blue
+BLOCK_COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255),
                 #yellow        #orange        #purple        #aqua
                 (255, 255, 0), (255, 165, 0), (128, 0, 128), (0, 255, 255)]
 
@@ -56,6 +56,14 @@ J_SHAPE = [[1, 0, 0], [1, 1, 1]]
 L_SHAPE = [[0, 0, 1], [1, 1, 1]]
 Z_SHAPE = [[1, 1, 0], [0, 1, 1]]
 S_SHAPE = [[0, 1, 1], [1, 1, 0]]
+
+I_SHAPE = [[1]] 
+O_SHAPE = [[1]] 
+T_SHAPE = [[1]] 
+J_SHAPE = [[1]] 
+L_SHAPE = [[1]] 
+Z_SHAPE = [[1]] 
+S_SHAPE = [[1]] 
 
 PIECE_NAME_TO_INT = {
     'I': 0,
@@ -209,14 +217,14 @@ class Tetris:
     def draw(self, screen):
         screen.fill(BLACK)
         self.draw_grid(screen)
-        self.draw_upcoming_pieces(screen)
+        #self.draw_upcoming_pieces(screen)
 
         # Draw filled blocks
         for y, row in enumerate(self.board):
             for x, value in enumerate(row):
-                if value:
-                    pygame.draw.rect(screen, self.color_board[y][x], (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
-                    pygame.draw.rect(screen, BLACK, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)  # Draw black border
+                #if value:
+                pygame.draw.rect(screen, random.choice(BLOCK_COLORS), (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+                    #pygame.draw.rect(screen, BLACK, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)  # Draw black border
 
         # Draw falling piece
         current_piece_shape = self.current_piece['shape']
@@ -504,6 +512,18 @@ class TetrisAIWithANN(Tetris):
         # The game is over if the new piece collides with existing blocks at the top
         return self.collide(self.current_piece, offset=(0, 0))
 
+    def pause_game(self):
+        paused = True
+        while paused:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        paused = False
+            pygame.time.delay(100)  # Adjust the delay as needed
+
     def get_reward(self):
         # You can define your scoring mechanism based on the number of cleared lines, etc.
         # For simplicity, let's use the number of lines cleared as the reward.
@@ -514,85 +534,35 @@ def main(train_episodes=1000000):
     pygame.init()
     #screen = pygame.display.set_mode(SCREEN_SIZE)
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
-    pygame.display.set_caption('Tetris AI with ANN')
+    pygame.display.set_caption('Press P to Next Round')
     #reward = 9898
     reward = 1
     clear_line = 0
     episode_offset = 0
     early_stop_counter = 0
+    episode = 0
 
     clock = pygame.time.Clock()
     tetris = TetrisAIWithANN()
+    tetris.reset(episode)
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_p:
+                    tetris.reset(episode)
+                    # continue to the next iteration of the loop to restart the game
+                    continue
 
-    # Load pre-trained weights
-    #print('load pre-trained')
-    #tetris.q_network.load_state_dict(torch.load("q_network.pth"))
-    #tetris.q_network.eval()  # Set the model to evaluation mode
+        tetris.update()
+        tetris.draw(screen)
+        pygame.display.flip()
+        clock.tick(GAME_SPEED)
 
-    for episode in range(train_episodes):
-        tetris.reset(episode)
-        while not tetris.is_game_over():
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
-
-            tetris.update()
-            tetris.draw(screen)
-            pygame.display.flip()
-            clock.tick(GAME_SPEED)
-
-        # Training loop
-        #reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
-        # print(f"Episode {episode + 1}/{train_episodes} - reward: {total_reward}")
-
-        # You may want to adjust the reward mechanism based on your specific objectives
-
-        # Training the Q-network
-        #for _ in range(50):  # Adjust the number of training steps per episode
-            #tetris.update()  # Update the Q-network through interactions with the environment
-
-        # Save the trained Q-network if needed
-        # torch.save(tetris.q_network.state_dict(), f"q_network_episode_{episode + 1}.pth")
-        #if reward < tetris.get_reward() and tetris.get_reward() > 16:
-        if tetris.exploration_rate == 0.01:
-            tetris.retarded += 1
-        tetris.reward += tetris.calculate_reward()  # Update total reward using the new function
-        if reward == 1:
-            reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
-            print("First Data")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + episode_offset}_{tetris.learning_rate}-{tetris.discount_factor}-{tetris.exploration_rate}.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network.pth")
-            tetris.q_network.load_state_dict(torch.load("q_network.pth"))
-            tetris.q_network.eval()  # Set the model to evaluation mode
-            tetris.retarded = 0
-            #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
-
-        if reward < tetris.get_reward() or tetris.clear_line:
-        #if tetris.get_reward() != 0:
-            reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
-            #torch.save(tetris.q_network.state_dict(), "q_network.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + episode_offset}_{tetris.learning_rate}-{tetris.discount_factor}-{tetris.exploration_rate}.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network.pth")
-            tetris.q_network.load_state_dict(torch.load("q_network.pth"))
-            tetris.q_network.eval()  # Set the model to evaluation mode
-            tetris.retarded = 0
-            #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
-            print("Highest Score!!!")
-
-        #if clear_line < tetris.clear_line:
-        #if tetris.clear_line:
-        #    #print("New Record!!!")
-        #    clear_line = tetris.clear_line
-        #    torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + episode_offset}_{tetris.learning_rate}-{tetris.discount_factor}-{tetris.exploration_rate}.pth")
-        #    torch.save(tetris.q_network.state_dict(), f"q_network.pth")
-        #    tetris.q_network.load_state_dict(torch.load("q_network.pth"))
-        #    tetris.q_network.eval()  # Set the model to evaluation mode
-        #    tetris.retarded = 0
-
-        print(f"Episode {episode + episode_offset}/{train_episodes} - Reward: {tetris.get_reward()}, Clear: {tetris.clear_line}, Retarded: {tetris.retarded},- {tetris.learning_rate}/{tetris.discount_factor}/{tetris.exploration_rate}")
-
-    pygame.quit()
+        if tetris.is_game_over():
+            tetris.pause_game()
+            tetris.reset(episode)
 
 if __name__ == '__main__':
     main()
