@@ -16,8 +16,13 @@ SCREEN_HEIGHT = SCREEN_SIZE[1]
 BLOCK_SIZE = SCREEN_WIDTH // WIDTH
 FPS = 30
 GAME_SPEED = 1000
-mode_hollow = 0
-mode_block = 1
+MODE_HOLLOW = 0
+MODE_BLOCK = 1
+RETARDED_CONSTANT = 25
+LEARNING_RATE = 0.4
+DISCOUNT_FACTOR = 0.4
+EXPLORATION_RATE = 0.06
+    #def __init__(self, learning_rate=0.7, discount_factor=0.4, exploration_rate=0.06):
 
 # Tetris pieces
 SHAPES = [
@@ -172,6 +177,7 @@ class Tetris:
                     self.board[y + self.current_piece['y']][x + self.current_piece['x']] = 1
 
         self.clear_lines()
+        self.discount_factor = self.discount_factor * 0.95
         self.current_piece = self.new_piece()
 
     def clear_lines(self):
@@ -235,27 +241,34 @@ class QNetwork(nn.Module):
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(input_size, 128)
         self.relu1 = nn.ReLU()
+        self.dropout1 = nn.Dropout(p=0.2)
         self.fc2 = nn.Linear(128, 64)
         self.relu2 = nn.ReLU()
+        self.dropout2 = nn.Dropout(p=0.2)
         self.fc3 = nn.Linear(64, output_size)
 
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu1(x)
+        x = self.dropout1(x)
         x = self.fc2(x)
         x = self.relu2(x)
+        x = self.dropout2(x)
         x = self.fc3(x)
         return x
 
 class TetrisAIWithANN(Tetris):
-    def __init__(self, learning_rate=0.001, discount_factor=0.9, exploration_rate=0.1):
+    def __init__(self, learning_rate=LEARNING_RATE, discount_factor=DISCOUNT_FACTOR, exploration_rate=EXPLORATION_RATE):
         super().__init__()
 
         # Define neural network parameters
         input_size = WIDTH * HEIGHT + 2
         output_size = 5  # Number of possible actions (rotate, move_left, move_right, hard_drop, do_nothing)
         self.q_network = QNetwork(input_size, output_size)
-        self.optimizer = optim.SGD(self.q_network.parameters(), lr=learning_rate)
+        #self.optimizer = optim.SGD(self.q_network.parameters(), lr=learning_rate)
+        self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate, weight_decay=1e-5)  # L2 regularization
+        #torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=self.optimizer, mode='min', factor=0.9, patience=10, verbose=True, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08)
+        #torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=0.9, last_epoch=-1, verbose=True)
         self.criterion = nn.MSELoss()
 
         self.learning_rate = learning_rate
@@ -264,7 +277,8 @@ class TetrisAIWithANN(Tetris):
 
         self.replay_buffer_size = 5000  # or a size that fits your memory constraints
         self.replay_buffer = collections.deque(maxlen=self.replay_buffer_size)
-        self.target_update_frequency = 200  # Adjust the frequency based on your training needs
+        #self.target_update_frequency = 200  # Adjust the frequency based on your training needs
+        self.target_update_frequency = 100  # Adjust the frequency
         self.target_q_network = QNetwork(input_size, output_size)
         self.target_q_network.load_state_dict(self.q_network.state_dict())
         self.target_q_network.eval()
@@ -274,9 +288,10 @@ class TetrisAIWithANN(Tetris):
         self.lowest_row = 0
         self.height = 0
 
+
     def calculate_reward(self):
         lines_cleared = self.clear_line
-        hollows = self.calculate_hollow(HEIGHT, 1, WIDTH, mode_hollow)
+        hollows = self.calculate_hollow(HEIGHT, 1, WIDTH, MODE_HOLLOW)
 
         #reward = 100 * (2 ** lines_cleared) - 50 * hollows
         reward = 500 * (2 ** lines_cleared)
@@ -338,9 +353,10 @@ class TetrisAIWithANN(Tetris):
             self.target_q_network.load_state_dict(self.q_network.state_dict())
 
     def decay_exploration_rate(self, episode):
-        if (self.retarded / (episode + 1)) > 0.6:
+        if self.retarded > RETARDED_CONSTANT:
             self.exploration_rate = 0.1
             self.retarded = 0
+            self.learning_rate *= 0.9
         else:
             self.exploration_rate = max(0.01, self.exploration_rate * 0.995)
 
@@ -439,11 +455,11 @@ class TetrisAIWithANN(Tetris):
                 if (self.height > self.highest_row):
                     self.highest_row = self.height
                     self.reward -= 100
-                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1], mode_hollow)
+                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1], MODE_HOLLOW)
                     self.reward -= self.hollow
                 else:
                     self.reward += 200
-                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1], mode_block)
+                    self.hollow = self.calculate_hollow(self.highest_row, width[0], width[1], MODE_BLOCK)
                     self.reward += self.hollow
                 if self.calculate_parity(self.highest_row, width[0], width[1]) == -1:
                     self.reward -= 50
@@ -481,6 +497,7 @@ class TetrisAIWithANN(Tetris):
         #self.srs_array_index = 0
         self.initialize_upcoming_pieces()
         self.current_piece = self.new_piece()
+        self.discount_factor = DISCOUNT_FACTOR
 
     def is_game_over(self):
         # The game is over if the new piece collides with existing blocks at the top
@@ -497,13 +514,17 @@ def main(train_episodes=1000000):
     #screen = pygame.display.set_mode(SCREEN_SIZE)
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
     pygame.display.set_caption('Tetris AI with ANN')
+    #reward = 9898
     reward = 1
     clear_line = 0
+    episode_offset = 0
+    early_stop_counter = 0
 
     clock = pygame.time.Clock()
     tetris = TetrisAIWithANN()
 
     # Load pre-trained weights
+    #print('load pre-trained')
     #tetris.q_network.load_state_dict(torch.load("q_network.pth"))
     #tetris.q_network.eval()  # Set the model to evaluation mode
 
@@ -539,18 +560,18 @@ def main(train_episodes=1000000):
         if reward == 1:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
             print("First Data")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + 1}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + episode_offset}_{tetris.learning_rate}-{tetris.discount_factor}-{tetris.exploration_rate}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
             tetris.retarded = 0
             #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
 
-        if reward < tetris.get_reward():
+        if reward < tetris.get_reward() or tetris.clear_line:
         #if tetris.get_reward() != 0:
             reward = tetris.get_reward()  # Use the reward as the total reward for simplicity
             #torch.save(tetris.q_network.state_dict(), "q_network.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + 1}.pth")
+            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + episode_offset}_{tetris.learning_rate}-{tetris.discount_factor}-{tetris.exploration_rate}.pth")
             torch.save(tetris.q_network.state_dict(), f"q_network.pth")
             tetris.q_network.load_state_dict(torch.load("q_network.pth"))
             tetris.q_network.eval()  # Set the model to evaluation mode
@@ -558,16 +579,17 @@ def main(train_episodes=1000000):
             #print(f"Episode {episode + 1}/{train_episodes} - reward: {tetris.get_reward()}")
             print("Highest Score!!!")
 
-        if clear_line < tetris.clear_line:
-            print("New Record!!!")
-            clear_line = tetris.clear_line
-            torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + 1}.pth")
-            torch.save(tetris.q_network.state_dict(), f"q_network.pth")
-            tetris.q_network.load_state_dict(torch.load("q_network.pth"))
-            tetris.q_network.eval()  # Set the model to evaluation mode
-            tetris.retarded = 0
+        #if clear_line < tetris.clear_line:
+        #if tetris.clear_line:
+        #    #print("New Record!!!")
+        #    clear_line = tetris.clear_line
+        #    torch.save(tetris.q_network.state_dict(), f"q_network_{tetris.get_reward()}_{tetris.clear_line}_#{episode + episode_offset}_{tetris.learning_rate}-{tetris.discount_factor}-{tetris.exploration_rate}.pth")
+        #    torch.save(tetris.q_network.state_dict(), f"q_network.pth")
+        #    tetris.q_network.load_state_dict(torch.load("q_network.pth"))
+        #    tetris.q_network.eval()  # Set the model to evaluation mode
+        #    tetris.retarded = 0
 
-        print(f"Episode {episode + 1}/{train_episodes} - Reward: {tetris.get_reward()}, Clear: {tetris.clear_line}, Retarded Rate: {tetris.retarded / (episode + 1)}")
+        print(f"Episode {episode + episode_offset}/{train_episodes} - Reward: {tetris.get_reward()}, Clear: {tetris.clear_line}, Retarded: {tetris.retarded},- {tetris.learning_rate}/{tetris.discount_factor}/{tetris.exploration_rate}")
 
     pygame.quit()
 
