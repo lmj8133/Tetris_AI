@@ -175,6 +175,7 @@ class Tetris:
             for x, value in enumerate(row):
                 if value:
                     self.board[y + self.current_piece['y']][x + self.current_piece['x']] = 1
+                    self.color_board[y + self.current_piece['y']][x + self.current_piece['x']] = self.current_piece['color']
 
         self.clear_lines()
         self.discount_factor = self.discount_factor * 0.95
@@ -214,7 +215,7 @@ class Tetris:
         for y, row in enumerate(self.board):
             for x, value in enumerate(row):
                 if value:
-                    pygame.draw.rect(screen, WHITE, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+                    pygame.draw.rect(screen, self.color_board[y][x], (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
                     pygame.draw.rect(screen, BLACK, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)  # Draw black border
 
         # Draw falling piece
@@ -222,7 +223,7 @@ class Tetris:
         for y, row in enumerate(current_piece_shape):
             for x, value in enumerate(row):
                 if value:
-                    pygame.draw.rect(screen, WHITE, (
+                    pygame.draw.rect(screen, self.current_piece['color'], (
                         (x + self.current_piece['x']) * BLOCK_SIZE, (y + self.current_piece['y']) * BLOCK_SIZE,
                         BLOCK_SIZE, BLOCK_SIZE))
                     pygame.draw.rect(screen, BLACK, (
