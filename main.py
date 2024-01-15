@@ -7,6 +7,8 @@ import torchvision
 import torch.optim as optim
 import pickle
 import collections
+import socket
+import json
 
 # Tetris constants
 WIDTH, HEIGHT = 10, 20
@@ -363,6 +365,9 @@ class Tetris:
                         paused = False
             pygame.time.delay(100)  # Adjust the delay as needed
 
+    def serialize_board(self, board):
+        return json.dumps(board)
+
 def main(train_episodes=1000000):
     pygame.init()
     #screen = pygame.display.set_mode(SCREEN_SIZE)
@@ -378,6 +383,9 @@ def main(train_episodes=1000000):
     tetris = Tetris()
 
     tetris.reset()
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(('localhost', 5555))
+
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -430,6 +438,10 @@ def main(train_episodes=1000000):
         tetris.draw(screen)
         pygame.display.flip()
         clock.tick(GAME_SPEED)
+
+        # Serialize and send board state
+        serialized_board = tetris.serialize_board(tetris.board)
+        client.send(bytes(serialized_board, "utf-8"))
 
         if tetris.is_game_over():
             tetris.pause_game()
