@@ -15,7 +15,7 @@ SCREEN_WIDTH = SCREEN_SIZE[0]
 SCREEN_HEIGHT = SCREEN_SIZE[1]
 BLOCK_SIZE = SCREEN_WIDTH // WIDTH
 # Constants for the sidebars
-#SIDE_BAR_WIDTH = 5 * BLOCK_SIZE  # Assuming each sidebar is 5 blocks wide
+SIDE_BAR_WIDTH = 5 * BLOCK_SIZE  # Assuming each sidebar is 5 blocks wide
 #SCREEN_WIDTH = (SCREEN_SIZE[0] + SIDE_BAR_WIDTH)
 # Update the screen size to include sidebars
 #SCREEN_SIZE = (SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -247,8 +247,11 @@ class Tetris:
 
     def draw_upcoming_pieces(self, screen):
         x_start = SCREEN_WIDTH + 10  # Adjust as needed
-        y_start = 10  # Adjust as needed
+        y_start = 150  # Adjust as needed
         gap = 100  # Gap between pieces, adjust as needed
+        frame_width = SIDE_BAR_WIDTH - 20
+        frame_height = 17 * BLOCK_SIZE
+        pygame.draw.rect(screen, WHITE, (x_start, 100, frame_width, frame_height), 1)  # Draw frame
 
         for i, piece in enumerate(self.upcoming_pieces):
             shape = piece.shape
@@ -260,9 +263,12 @@ class Tetris:
                         pygame.draw.rect(screen, BLACK, (x_start + x * BLOCK_SIZE, y_start + i * gap + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
 
     def draw_held_piece(self, screen):
+        x_start = SCREEN_WIDTH + 10  # X position to start drawing the held piece
+        y_start = 30  # Y position to start drawing the held piece
+        frame_width = SIDE_BAR_WIDTH - 20
+        frame_height = 3 * BLOCK_SIZE
+        pygame.draw.rect(screen, WHITE, (x_start, 0, frame_width, frame_height), 1)  # Draw frame
         if self.held_piece:
-            x_start = 10  # X position to start drawing the held piece
-            y_start = 10  # Y position to start drawing the held piece
             for y, row in enumerate(self.held_piece['shape']):
                 for x, value in enumerate(row):
                     if value:
@@ -281,12 +287,12 @@ class Tetris:
         font = pygame.font.Font(None, 36)
         hold_label = font.render('HOLD', True, WHITE)
         next_label = font.render('NEXT', True, WHITE)
-        screen.blit(hold_label, (10, 10))  # Adjust coordinates as needed
-        screen.blit(next_label, (SCREEN_WIDTH - SIDE_BAR_WIDTH + 10, 10))  # Adjust coordinates as needed
+        screen.blit(hold_label, (SCREEN_WIDTH + 10, 0))  # Adjust coordinates as needed
+        screen.blit(next_label, (SCREEN_WIDTH + 10, 100))  # Adjust coordinates as needed
 
     def draw(self, screen):
         screen.fill(BLACK)
-        #self.draw_sidebar(screen)
+        self.draw_sidebar(screen)
         self.draw_grid(screen)
         self.draw_upcoming_pieces(screen)
         self.draw_held_piece(screen)
