@@ -368,6 +368,29 @@ class Tetris:
     def serialize_board(self, board):
         return json.dumps(board)
 
+def send_data_to_server(data):
+    try:
+        client.send(bytes(data, "utf-8"))
+    except BrokenPipeError:
+        print("Connection lost. Attempting to reconnect...")
+        reconnect_to_server()
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+def reconnect_to_server():
+    global client  # If 'client' is defined outside this function, you need to declare it as global
+    client.close()  # Close the existing socket safely
+    while True:
+        try:
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client.connect(('localhost', 5555))
+            print("Reconnected to the server successfully.")
+            break  # Exit the loop once reconnected
+        except socket.error as e:
+            print(f"Reconnection failed: {e}. Retrying...")
+            # You might want to add a delay here before retrying to avoid flooding the server with connection attempts
+            time.sleep(5)  # Wait for 5 seconds before retrying
+
 def main(train_episodes=1000000):
     pygame.init()
     #screen = pygame.display.set_mode(SCREEN_SIZE)
@@ -396,6 +419,8 @@ def main(train_episodes=1000000):
                 if event.key == pygame.K_p:
                     tetris.reset()
                     # continue to the next iteration of the loop to restart the game
+                    serialized_board = tetris.serialize_board(tetris.board)
+                    client.send(bytes(serialized_board, "utf-8"))
                     continue
             if event.type == pygame.KEYDOWN:
                 # Move left
@@ -442,6 +467,7 @@ def main(train_episodes=1000000):
         # Serialize and send board state
         serialized_board = tetris.serialize_board(tetris.board)
         client.send(bytes(serialized_board, "utf-8"))
+        #send_data_to_server(serialized_board)
 
         if tetris.is_game_over():
             tetris.pause_game()

@@ -1,11 +1,13 @@
+import os
 import pygame
 import socket
 import json
+import select
 
 # Define constants similar to your client code
 WIDTH, HEIGHT = 10, 20
-SCREEN_SIZE = (300, 600)
-BLOCK_SIZE = SCREEN_SIZE[0] // WIDTH
+SCREEN_SIZE = (600, 600)  # Double the width to accommodate two boards
+BLOCK_SIZE = SCREEN_SIZE[0] // (2 * WIDTH)  # Adjust block size accordingly
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 
@@ -15,53 +17,77 @@ SHAPE_COLORS = [(0, 255, 255), (255, 255, 0), (128, 0, 128), (0, 0, 255), (255, 
 def deserialize_board(serialized_board):
     return json.loads(serialized_board)
 
-def draw_block(screen, color, x, y):
-    pygame.draw.rect(screen, color, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
-    pygame.draw.rect(screen, BLACK, (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+def draw_block(screen, color, x, y, offset=0):
+    pygame.draw.rect(screen, color, ((x + offset) * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+    pygame.draw.rect(screen, BLACK, ((x + offset) * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
 
-def draw_board(screen, board):
-    screen.fill(BLACK)
+def draw_board(screen, board, offset=0):
     for y, row in enumerate(board):
         for x, block in enumerate(row):
             if block:
                 color = SHAPE_COLORS[block - 1]  # Adjust color index
-                draw_block(screen, color, x, y)
+                draw_block(screen, color, x, y, offset)
 
-def receive_complete_json(client_socket):
-    buffer = ""
-    while True:
-        try:
-            data = client_socket.recv(4096).decode("utf-8")
-            if not data:
-                break
-            buffer += data
-            while True:
-                try:
-                    # Try to decode the buffer
-                    decoded_json, idx = json.JSONDecoder().raw_decode(buffer)
-                    yield decoded_json
-                    buffer = buffer[idx:]
-                except json.JSONDecodeError:
-                    # Data is not yet complete, wait for more
-                    break
-        except socket.error as e:
-            print(f"Socket error: {e}")
-            break
+def handle_client_data(client_socket, offset):
+    try:
+        data = client_socket.recv(4096).decode("utf-8")
+        if data:
+            decoded_board = deserialize_board(data)
+            draw_board(screen, decoded_board, offset)
+            pygame.display.flip()
+        else:
+            # No data, client disconnected
+            return False
+    except Exception as e:
+        print(f"Error handling client data: {e}")
+        return False
+    return True
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(('localhost', 5555))
-server.listen()
+server.listen(2)  # Listen for up to 2 connections
+server.setblocking(0)  # Make the server non-blocking
 
-while True:
-    client, address = server.accept()
-    print(f"Connection from {address} has been established.")
+# Initialize Pygame
+pygame.init()
+screen = pygame.display.set_mode(SCREEN_SIZE)
+pygame.display.set_caption('Tetris Server')
 
-    # Initialize Pygame
-    pygame.init()
-    screen = pygame.display.set_mode(SCREEN_SIZE)
-    pygame.display.set_caption('Tetris Server')
+clients = {}
+client_offsets = {}
 
-    for decoded_board in receive_complete_json(client):
-        # Draw the board
-        draw_board(screen, decoded_board)
-        pygame.display.flip()
+try:
+    while True:
+        # Use select to wait for readability on multiple sockets, including the server socket itself
+        readable, _, _ = select.select([server] + list(clients.keys()), [], [], 0.1)
+        
+        for sock in readable:
+            if sock is server:
+                # Accept new connections
+                client, address = server.accept()
+                print(f"Connection from {address} has been established.")
+                client.setblocking(0)
+                clients[client] = address
+                client_offsets[client] = len(clients) - 1  # Offset based on client count
+            else:
+                # Handle client data
+                offset = client_offsets[sock] * WIDTH
+                if not handle_client_data(sock, offset):
+                    print(f"Closing connection to {clients[sock]}")
+                    del client_offsets[sock]
+                    sock.close()
+                    del clients[sock]
+
+        # Handle Pygame events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                raise Exception("Pygame Quit")
+
+except Exception as e:
+    print(f"Server terminated: {e}")
+
+finally:
+    server.close()
+    pygame.quit()
+
