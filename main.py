@@ -1,21 +1,22 @@
 import pygame
 import random
 import numpy as np
-import torch
-import torch.nn as nn
-import torchvision
-import torch.optim as optim
+#import torch
+#import torch.nn as nn
+#import torchvision
+#import torch.optim as optim
 import pickle
 import collections
 import socket
 import json
+import select
 
 # Tetris constants
 WIDTH, HEIGHT = 10, 20
-SCREEN_SIZE = (300, 600)
+SCREEN_SIZE = (600, 600)
 SCREEN_WIDTH = SCREEN_SIZE[0]
 SCREEN_HEIGHT = SCREEN_SIZE[1]
-BLOCK_SIZE = SCREEN_WIDTH // WIDTH
+BLOCK_SIZE = SCREEN_WIDTH // (2 * WIDTH)
 # Constants for the sidebars
 SIDE_BAR_WIDTH = 5 * BLOCK_SIZE  # Assuming each sidebar is 5 blocks wide
 #SCREEN_WIDTH = (SCREEN_SIZE[0] + SIDE_BAR_WIDTH)
@@ -391,6 +392,15 @@ def reconnect_to_server():
             # You might want to add a delay here before retrying to avoid flooding the server with connection attempts
             time.sleep(5)  # Wait for 5 seconds before retrying
 
+def draw_opponent_board(screen, board):
+    offset_x = SCREEN_WIDTH + SIDE_BAR_WIDTH  # Position the opponent's board to the right of the sidebar
+    for y, row in enumerate(board):
+        for x, block in enumerate(row):
+            if block:
+                color = SHAPE_COLORS[block - 1]
+                pygame.draw.rect(screen, color, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+                pygame.draw.rect(screen, BLACK, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+
 def main(train_episodes=1000000):
     pygame.init()
     #screen = pygame.display.set_mode(SCREEN_SIZE)
@@ -457,6 +467,25 @@ def main(train_episodes=1000000):
                     tetris.das_direction = None
                     tetris.falling_timer = 0
                     tetris.das_timer = 0
+
+        ready_to_read, _, _ = select.select([client], [], [], 0)
+        if ready_to_read:
+            opponent_board_data = client.recv(4096).decode("utf-8")
+            if opponent_board_data:
+                # Split by newline to handle multiple JSON objects
+                for json_object in opponent_board_data.strip().split("\n"):
+                    try:
+                        opponent_board = json.loads(json_object)
+                        draw_opponent_board(screen, opponent_board)
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decode error: {e}")
+        #ready_to_read, _, _ = select.select([client], [], [], 0)
+        #if ready_to_read:
+        #    opponent_board_data = client.recv(4096)
+        #    if opponent_board_data:
+        #        opponent_board = json.loads(opponent_board_data.decode("utf-8"))
+        #        # Draw the opponent's board on the right side of the client's board
+        #        draw_opponent_board(screen, opponent_board)
 
         tetris.update_das()
         tetris.update()

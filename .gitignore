@@ -2,3 +2,4 @@
 *.sciprj
 tags
 *.taghl
+tetris_env/*

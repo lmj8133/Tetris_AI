@@ -1,4 +1,5 @@
 import os
+#os.environ['SDL_VIDEODRIVER'] = 'dummy'  # or 'windib' for Windows
 import pygame
 import socket
 import json
@@ -30,18 +31,42 @@ def draw_board(screen, board, offset=0):
 
 def handle_client_data(client_socket, offset):
     try:
-        data = client_socket.recv(4096).decode("utf-8")
+        data = client_socket.recv(4096)
         if data:
-            decoded_board = deserialize_board(data)
+            broadcast_data(client_socket, data)  # Broadcast received board state
+            decoded_board = deserialize_board(data.decode("utf-8"))
             draw_board(screen, decoded_board, offset)
             pygame.display.flip()
         else:
-            # No data, client disconnected
             return False
     except Exception as e:
         print(f"Error handling client data: {e}")
         return False
     return True
+
+def broadcast_data(sender_socket, data):
+    for client_socket in clients.keys():
+        if client_socket != sender_socket:  # Don't send back to the sender
+            try:
+                # Ensure data is in bytes before sending
+                if isinstance(data, str):
+                    data = data.encode("utf-8")
+                client_socket.send(data)
+            except Exception as e:
+                print(f"Error broadcasting to {clients[client_socket]}: {e}")
+                client_socket.close()
+                del clients[client_socket]
+
+#def broadcast_data(sender_socket, data):
+#    for client_socket in clients.keys():
+#        if client_socket != sender_socket:  # Don't send back to the sender
+#            try:
+#                #client_socket.send(data)
+#                client_socket.send(bytes(data + "\n", "utf-8"))  # Appending a newline character as a delimiter
+#            except Exception as e:
+#                print(f"Error broadcasting to {clients[client_socket]}: {e}")
+#                client_socket.close()
+#                del clients[client_socket]
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
