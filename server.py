@@ -29,14 +29,37 @@ def draw_board(screen, board, offset=0):
                 color = SHAPE_COLORS[block - 1]  # Adjust color index
                 draw_block(screen, color, x, y, offset)
 
+#def handle_client_data(client_socket, offset):
+#    try:
+#        data = client_socket.recv(4096)
+#        if data:
+#            broadcast_data(client_socket, data)  # Broadcast received board state
+#            decoded_board = deserialize_board(data.decode("utf-8"))
+#            draw_board(screen, decoded_board, offset)
+#            pygame.display.flip()
+#        else:
+#            return False
+#    except Exception as e:
+#        print(f"Error handling client data: {e}")
+#        return False
+#    return True
+# Updated server code to ensure synchronized start
+clients_ready = set()  # Track ready clients
+
 def handle_client_data(client_socket, offset):
     try:
         data = client_socket.recv(4096)
         if data:
-            broadcast_data(client_socket, data)  # Broadcast received board state
-            decoded_board = deserialize_board(data.decode("utf-8"))
-            draw_board(screen, decoded_board, offset)
-            pygame.display.flip()
+            decoded_data = data.decode("utf-8")
+            if decoded_data == "ready":
+                # Once one client sends "ready", broadcast "start" to both clients
+                for sock in clients.keys():
+                    sock.send(bytes("start", "utf-8"))
+            else:
+                broadcast_data(client_socket, data)  # Broadcast received board state
+                decoded_board = deserialize_board(data)
+                draw_board(screen, decoded_board, offset)
+                pygame.display.flip()
         else:
             return False
     except Exception as e:
@@ -95,6 +118,9 @@ try:
                 client.setblocking(0)
                 clients[client] = address
                 client_offsets[client] = len(clients) - 1  # Offset based on client count
+                if len(clients) == 2:
+                    for sock in clients.keys():
+                        sock.send(bytes("connected", "utf-8"))  # Notify clients that they are connected
             else:
                 # Handle client data
                 offset = client_offsets[sock] * WIDTH

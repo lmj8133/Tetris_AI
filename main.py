@@ -9,12 +9,6 @@ import select
 import time
 import threading
 
-# Additional global variables to track game state
-global GAME_STATE, start_pressed, opponent_connected, client
-GAME_STATE = "opening"  # Possible values: "opening", "countdown", "playing"
-start_pressed = False
-opponent_connected = False
-
 # Tetris constants
 WIDTH, HEIGHT = 10, 20
 SCREEN_SIZE = (600, 600)
@@ -405,9 +399,15 @@ def draw_opponent_board(screen, board):
                 pygame.draw.rect(screen, color, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
                 pygame.draw.rect(screen, BLACK, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
                 
+# Additional global variables to track game state
+global GAME_STATE, start_pressed, opponent_connected, client
+GAME_STATE = "opening"  # Possible values: "opening", "countdown", "playing"
+start_pressed = False
+opponent_connected = False
+
 # Define function to check opponent connection
 def check_opponent_connection():
-    global opponent_connected, client
+    global opponent_connected, client, GAME_STATE
 
     while GAME_STATE == "opening":
         ready_to_read, _, _ = select.select([client], [], [], 1)
@@ -415,10 +415,12 @@ def check_opponent_connection():
             opponent_status = client.recv(4096).decode("utf-8")
             if opponent_status == "connected":
                 opponent_connected = True
+            elif opponent_status == "start":
+                GAME_STATE = "countdown"  # Both clients will start the countdown when "start" is received
                 break
 
 def main():
-    global GAME_STATE, client  # Declare client and GAME_STATE as global to be accessible here and in the thread
+    global GAME_STATE, client, start_pressed  # Declare client and GAME_STATE as global to be accessible here and in the thread
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
@@ -454,9 +456,8 @@ def main():
                     quit()
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN and opponent_connected:
-                        global start_pressed
                         start_pressed = True
-                        GAME_STATE = "countdown"
+                        client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
         
         elif GAME_STATE == "countdown":
             # Countdown from 5 seconds before starting
