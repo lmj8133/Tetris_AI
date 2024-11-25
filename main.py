@@ -1,15 +1,19 @@
 import pygame
 import random
 import numpy as np
-#import torch
-#import torch.nn as nn
-#import torchvision
-#import torch.optim as optim
 import pickle
 import collections
 import socket
 import json
 import select
+import time
+import threading
+
+# Additional global variables to track game state
+global GAME_STATE, start_pressed, opponent_connected, client
+GAME_STATE = "opening"  # Possible values: "opening", "countdown", "playing"
+start_pressed = False
+opponent_connected = False
 
 # Tetris constants
 WIDTH, HEIGHT = 10, 20
@@ -400,17 +404,25 @@ def draw_opponent_board(screen, board):
                 color = SHAPE_COLORS[block - 1]
                 pygame.draw.rect(screen, color, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
                 pygame.draw.rect(screen, BLACK, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+                
+# Define function to check opponent connection
+def check_opponent_connection():
+    global opponent_connected, client
 
-def main(train_episodes=1000000):
+    while GAME_STATE == "opening":
+        ready_to_read, _, _ = select.select([client], [], [], 1)
+        if ready_to_read:
+            opponent_status = client.recv(4096).decode("utf-8")
+            if opponent_status == "connected":
+                opponent_connected = True
+                break
+
+def main():
+    global GAME_STATE, client  # Declare client and GAME_STATE as global to be accessible here and in the thread
+
     pygame.init()
-    #screen = pygame.display.set_mode(SCREEN_SIZE)
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
-    pygame.display.set_caption('Tetris AI with ANN')
-    #reward = 9898
-    reward = 1
-    clear_line = 0
-    episode_offset = 0
-    early_stop_counter = 0
+    pygame.display.set_caption('Tetris')
 
     clock = pygame.time.Clock()
     tetris = Tetris()
@@ -419,88 +431,149 @@ def main(train_episodes=1000000):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(('localhost', 5555))
 
+    # Start a thread to check for opponent connection
+    threading.Thread(target=check_opponent_connection, daemon=True).start()
+
     while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-            elif event.type == pygame.KEYDOWN:
-                # Restart
-                if event.key == pygame.K_p:
-                    tetris.reset()
-                    # continue to the next iteration of the loop to restart the game
-                    serialized_board = tetris.serialize_board(tetris.board)
-                    client.send(bytes(serialized_board, "utf-8"))
-                    continue
-            if event.type == pygame.KEYDOWN:
-                # Move left
-                if event.key == pygame.K_j:
-                    tetris.move_piece(-1, 0)
-                    tetris.das_direction = (-1, 0)
-                # Move right
-                if event.key == pygame.K_l:
-                    tetris.move_piece(1, 0)
-                    tetris.das_direction = (1, 0)
-                # Rotate clockwise
-                if event.key == pygame.K_f:
-                    tetris.rotate_piece_clockwise()
-                # Rotate counter-clockwise
-                if event.key == pygame.K_s:
-                    tetris.rotate_piece_counterclockwise()
-                # Rotate 180 degree
-                if event.key == pygame.K_d:
-                    tetris.rotate_piece_180()
-                # Soft drop
-                if event.key == pygame.K_k:
-                    tetris.move_piece(0, 1)
-                    tetris.das_direction = (0, 1)
-                # Hard drop
-                if event.key == pygame.K_SPACE:
-                    tetris.hard_drop()
-                # Hold
-                if event.key == pygame.K_i:
-                    tetris.hold_piece()
-            if event.type == pygame.KEYUP:
-                if (event.key == pygame.K_j) or \
-                   (event.key == pygame.K_l) or \
-                   (event.key == pygame.K_k):
-                    tetris.das_direction = None
-                    tetris.falling_timer = 0
-                    tetris.das_timer = 0
+        screen.fill(BLACK)
+        
+        if GAME_STATE == "opening":
+            # Display waiting message
+            font = pygame.font.Font(None, 36)
+            if opponent_connected:
+                message = "Opponent Connected. Press 'Start' to Begin."
+            else:
+                message = "Waiting for Opponent to Connect..."
+            text = font.render(message, True, WHITE)
+            screen.blit(text, (SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
 
-        ready_to_read, _, _ = select.select([client], [], [], 0)
-        if ready_to_read:
-            opponent_board_data = client.recv(4096).decode("utf-8")
-            if opponent_board_data:
-                # Split by newline to handle multiple JSON objects
-                for json_object in opponent_board_data.strip().split("\n"):
-                    try:
-                        opponent_board = json.loads(json_object)
-                        draw_opponent_board(screen, opponent_board)
-                    except json.JSONDecodeError as e:
-                        print(f"JSON decode error: {e}")
-        #ready_to_read, _, _ = select.select([client], [], [], 0)
-        #if ready_to_read:
-        #    opponent_board_data = client.recv(4096)
-        #    if opponent_board_data:
-        #        opponent_board = json.loads(opponent_board_data.decode("utf-8"))
-        #        # Draw the opponent's board on the right side of the client's board
-        #        draw_opponent_board(screen, opponent_board)
-
-        tetris.update_das()
-        tetris.update()
-        tetris.draw(screen)
-        pygame.display.flip()
-        clock.tick(GAME_SPEED)
-
-        # Serialize and send board state
-        serialized_board = tetris.serialize_board(tetris.board)
-        client.send(bytes(serialized_board, "utf-8"))
-        #send_data_to_server(serialized_board)
-
-        if tetris.is_game_over():
-            tetris.pause_game()
+            # Check for start button press
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN and opponent_connected:
+                        global start_pressed
+                        start_pressed = True
+                        GAME_STATE = "countdown"
+        
+        elif GAME_STATE == "countdown":
+            # Countdown from 5 seconds before starting
+            for i in range(5, 0, -1):
+                screen.fill(BLACK)
+                font = pygame.font.Font(None, 72)
+                countdown_text = font.render(str(i), True, WHITE)
+                screen.blit(countdown_text, (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+                pygame.display.flip()
+                time.sleep(1)
+            GAME_STATE = "playing"
             tetris.reset()
+
+        elif GAME_STATE == "playing":
+            # The usual gameplay code
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_j:
+                        tetris.move_piece(-1, 0)
+                    elif event.key == pygame.K_l:
+                        tetris.move_piece(1, 0)
+                    elif event.key == pygame.K_f:
+                        tetris.rotate_piece_clockwise()
+                    elif event.key == pygame.K_SPACE:
+                        tetris.hard_drop()
+
+            tetris.update()
+            tetris.draw(screen)
+        
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    #while True:
+    #    for event in pygame.event.get():
+    #        if event.type == pygame.QUIT:
+    #            pygame.quit()
+    #            quit()
+    #        elif event.type == pygame.KEYDOWN:
+    #            # Restart
+    #            if event.key == pygame.K_p:
+    #                tetris.reset()
+    #                # continue to the next iteration of the loop to restart the game
+    #                serialized_board = tetris.serialize_board(tetris.board)
+    #                client.send(bytes(serialized_board, "utf-8"))
+    #                continue
+    #        if event.type == pygame.KEYDOWN:
+    #            # Move left
+    #            if event.key == pygame.K_j:
+    #                tetris.move_piece(-1, 0)
+    #                tetris.das_direction = (-1, 0)
+    #            # Move right
+    #            if event.key == pygame.K_l:
+    #                tetris.move_piece(1, 0)
+    #                tetris.das_direction = (1, 0)
+    #            # Rotate clockwise
+    #            if event.key == pygame.K_f:
+    #                tetris.rotate_piece_clockwise()
+    #            # Rotate counter-clockwise
+    #            if event.key == pygame.K_s:
+    #                tetris.rotate_piece_counterclockwise()
+    #            # Rotate 180 degree
+    #            if event.key == pygame.K_d:
+    #                tetris.rotate_piece_180()
+    #            # Soft drop
+    #            if event.key == pygame.K_k:
+    #                tetris.move_piece(0, 1)
+    #                tetris.das_direction = (0, 1)
+    #            # Hard drop
+    #            if event.key == pygame.K_SPACE:
+    #                tetris.hard_drop()
+    #            # Hold
+    #            if event.key == pygame.K_i:
+    #                tetris.hold_piece()
+    #        if event.type == pygame.KEYUP:
+    #            if (event.key == pygame.K_j) or \
+    #               (event.key == pygame.K_l) or \
+    #               (event.key == pygame.K_k):
+    #                tetris.das_direction = None
+    #                tetris.falling_timer = 0
+    #                tetris.das_timer = 0
+
+    #    ready_to_read, _, _ = select.select([client], [], [], 0)
+    #    if ready_to_read:
+    #        opponent_board_data = client.recv(4096).decode("utf-8")
+    #        if opponent_board_data:
+    #            # Split by newline to handle multiple JSON objects
+    #            for json_object in opponent_board_data.strip().split("\n"):
+    #                try:
+    #                    opponent_board = json.loads(json_object)
+    #                    draw_opponent_board(screen, opponent_board)
+    #                except json.JSONDecodeError as e:
+    #                    print(f"JSON decode error: {e}")
+    #    #ready_to_read, _, _ = select.select([client], [], [], 0)
+    #    #if ready_to_read:
+    #    #    opponent_board_data = client.recv(4096)
+    #    #    if opponent_board_data:
+    #    #        opponent_board = json.loads(opponent_board_data.decode("utf-8"))
+    #    #        # Draw the opponent's board on the right side of the client's board
+    #    #        draw_opponent_board(screen, opponent_board)
+
+    #    tetris.update_das()
+    #    tetris.update()
+    #    tetris.draw(screen)
+    #    pygame.display.flip()
+    #    clock.tick(GAME_SPEED)
+
+    #    # Serialize and send board state
+    #    serialized_board = tetris.serialize_board(tetris.board)
+    #    client.send(bytes(serialized_board, "utf-8"))
+    #    #send_data_to_server(serialized_board)
+
+    #    if tetris.is_game_over():
+    #        tetris.pause_game()
+    #        tetris.reset()
 
     pygame.quit()
 
