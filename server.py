@@ -124,7 +124,7 @@ def broadcast_data(sender_socket, data):
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(('localhost', 5555))
+server.bind(('0.0.0.0', 5555))
 server.listen(2)  # Listen for up to 2 connections
 server.setblocking(0)  # Make the server non-blocking
 

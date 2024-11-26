@@ -490,14 +490,41 @@ def main():
                     pygame.quit()
                     quit()
                 elif event.type == pygame.KEYDOWN:
+                    # Move left
                     if event.key == pygame.K_j:
                         tetris.move_piece(-1, 0)
-                    elif event.key == pygame.K_l:
+                        tetris.das_direction = (-1, 0)
+                    # Move right
+                    if event.key == pygame.K_l:
                         tetris.move_piece(1, 0)
-                    elif event.key == pygame.K_f:
+                        tetris.das_direction = (1, 0)
+                    # Rotate clockwise
+                    if event.key == pygame.K_f:
                         tetris.rotate_piece_clockwise()
-                    elif event.key == pygame.K_SPACE:
+                    # Rotate counter-clockwise
+                    if event.key == pygame.K_s:
+                        tetris.rotate_piece_counterclockwise()
+                    # Rotate 180 degree
+                    if event.key == pygame.K_d:
+                        tetris.rotate_piece_180()
+                    # Soft drop
+                    if event.key == pygame.K_k:
+                        tetris.move_piece(0, 1)
+                        tetris.das_direction = (0, 1)
+                    # Hard drop
+                    if event.key == pygame.K_SPACE:
                         tetris.hard_drop()
+                    # Hold
+                    if event.key == pygame.K_i:
+                        tetris.hold_piece()
+                if event.type == pygame.KEYUP:
+                    if (event.key == pygame.K_j) or \
+                       (event.key == pygame.K_l) or \
+                       (event.key == pygame.K_k):
+                        tetris.das_direction = None
+                        tetris.falling_timer = 0
+                        tetris.das_timer = 0
+
             # Send the player's board to the server
             send_board_to_server(tetris)
 
@@ -515,6 +542,7 @@ def main():
                             print(f"JSON decode error: {e}")
 
             # Draw the player's board and the opponent's board
+            tetris.update_das()
             tetris.update()
             tetris.draw(screen)
             draw_opponent_board(screen, opponent_board)
