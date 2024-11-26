@@ -240,10 +240,28 @@ class Tetris:
 
     def clear_lines(self):
         lines_to_clear = [i for i, row in enumerate(self.board) if all(row)]
+        num_lines_cleared = len(lines_to_clear)
+        
         for line in lines_to_clear:
             del self.board[line]
             self.board.insert(0, [0] * WIDTH)
-            self.clear_line += 1
+
+        if num_lines_cleared > 0:
+            self.send_garbage_lines(num_lines_cleared)
+
+    def send_garbage_lines(self, num_lines):
+        # Send the number of garbage lines to be added to the opponent
+        try:
+            client.send(bytes(json.dumps({"garbage": num_lines}) + "\n", "utf-8"))
+        except Exception as e:
+            print(f"Error sending garbage data: {e}")
+
+    def add_garbage_lines(self, num_lines):
+        # Add num_lines garbage lines to the bottom and push the rest up
+        for _ in range(num_lines):
+            garbage_line = [1 if random.random() > 0.1 else 0 for _ in range(WIDTH)]
+            self.board.pop(0)
+            self.board.append(garbage_line)
 
     def draw_upcoming_pieces(self, screen):
         x_start = SCREEN_WIDTH + 10  # Adjust as needed
@@ -459,7 +477,7 @@ def main():
             # Display waiting message
             font = pygame.font.Font(None, 36)
             if opponent_connected:
-                message = "Opponent Connected. Press 'Start' to Begin."
+                message = "Opponent Connected. Press 'ENTER' to Begin."
             else:
                 message = "Waiting for Opponent to Connect..."
             text = font.render(message, True, WHITE)
@@ -532,7 +550,7 @@ def main():
             # Send the player's board to the server
             send_board_to_server(tetris)
 
-            # Check for opponent board data
+            # Check for opponent board data or garbage data
             ready_to_read, _, _ = select.select([client], [], [], 0)
             if ready_to_read:
                 data = client.recv(4096).decode("utf-8")
@@ -541,7 +559,11 @@ def main():
                     json_object, buffer = buffer.split('\n', 1)
                     if json_object.strip():
                         try:
-                            opponent_board = json.loads(json_object)
+                            data_dict = json.loads(json_object)
+                            if "garbage" in data_dict:
+                                tetris.add_garbage_lines(data_dict["garbage"])
+                            else:
+                                opponent_board = data_dict
                         except json.JSONDecodeError as e:
                             print(f"JSON decode error: {e}")
 

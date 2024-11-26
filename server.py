@@ -76,8 +76,8 @@ def handle_client_data(client_socket, offset):
                 for sock in clients.keys():
                     sock.send(bytes("start", "utf-8"))
             else:
-                # Assume the received data is the serialized board state
-                broadcast_data(client_socket, data)  # Broadcast the received board state to other clients
+                # Assume the received data is either board data or garbage data
+                broadcast_data(client_socket, data)  # Broadcast the received data to other clients
         else:
             return False
     except Exception as e:
