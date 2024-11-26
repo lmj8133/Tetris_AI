@@ -259,9 +259,18 @@ class Tetris:
     def add_garbage_lines(self, num_lines):
         # Add num_lines garbage lines to the bottom and push the rest up
         for _ in range(num_lines):
-            garbage_line = [1 if random.random() > 0.1 else 0 for _ in range(WIDTH)]
+            # Create a line full of blocks with one hole at a random position
+            hole_position = random.randint(0, WIDTH - 1)
+            garbage_line = [1 if x != hole_position else 0 for x in range(WIDTH)]  # Set value to 1 for blocks, 0 for hole
+            garbage_color_line = [WHITE if x != hole_position else BLACK for x in range(WIDTH)]  # Set color to WHITE, BLACK for hole
+
+            # Remove the top line and append the garbage line at the bottom
             self.board.pop(0)
             self.board.append(garbage_line)
+
+            # Update color_board with WHITE for garbage blocks and BLACK for holes
+            self.color_board.pop(0)
+            self.color_board.append(garbage_color_line)
 
     def draw_upcoming_pieces(self, screen):
         x_start = SCREEN_WIDTH + 10  # Adjust as needed
