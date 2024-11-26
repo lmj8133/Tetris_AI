@@ -9,6 +9,9 @@ import select
 import time
 import threading
 
+PLAYER_FRAME_COLOR = (0, 255, 0)  # Green frame for the player's board
+OPPONENT_FRAME_COLOR = (255, 0, 0)  # Red frame for the opponent's board
+FRAME_WIDTH = 5  # Width of the frame in pixels
 # Tetris constants
 WIDTH, HEIGHT = 10, 20
 SCREEN_SIZE = (600, 600)
@@ -241,10 +244,6 @@ class Tetris:
             del self.board[line]
             self.board.insert(0, [0] * WIDTH)
             self.clear_line += 1
-            if self.reward < 0:
-                self.reward *= -1
-
-            self.reward += (3000 * (1.01 ** (self.clear_line)))
 
     def draw_upcoming_pieces(self, screen):
         x_start = SCREEN_WIDTH + 10  # Adjust as needed
@@ -390,9 +389,14 @@ def reconnect_to_server():
             # You might want to add a delay here before retrying to avoid flooding the server with connection attempts
             time.sleep(5)  # Wait for 5 seconds before retrying
 
+def draw_frame(screen, x_start, y_start, width, height, color):
+    pygame.draw.rect(screen, color, (x_start - FRAME_WIDTH, y_start - FRAME_WIDTH,
+                                     width + 2 * FRAME_WIDTH, height + 2 * FRAME_WIDTH), FRAME_WIDTH)
+
 def draw_opponent_board(screen, board):
     #offset_x = SCREEN_WIDTH + SIDE_BAR_WIDTH  # Position the opponent's board to the right of the sidebar
     offset_x = SCREEN_WIDTH - SIDE_BAR_WIDTH - SIDE_BAR_WIDTH# Position the opponent's board to the right of the sidebar
+    draw_frame(screen, offset_x, 0, SCREEN_WIDTH, SCREEN_HEIGHT, OPPONENT_FRAME_COLOR)
     for y, row in enumerate(board):
         for x, block in enumerate(row):
             if block:
