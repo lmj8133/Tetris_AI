@@ -364,8 +364,8 @@ class Tetris:
                         paused = False
             pygame.time.delay(100)  # Adjust the delay as needed
 
-    def serialize_board(self, board):
-        return json.dumps(board)
+    def serialize_board(self):
+        return json.dumps(self.board)
 
 def send_data_to_server(data):
     try:
@@ -391,13 +391,21 @@ def reconnect_to_server():
             time.sleep(5)  # Wait for 5 seconds before retrying
 
 def draw_opponent_board(screen, board):
-    offset_x = SCREEN_WIDTH + SIDE_BAR_WIDTH  # Position the opponent's board to the right of the sidebar
+    #offset_x = SCREEN_WIDTH + SIDE_BAR_WIDTH  # Position the opponent's board to the right of the sidebar
+    offset_x = SCREEN_WIDTH - SIDE_BAR_WIDTH - SIDE_BAR_WIDTH# Position the opponent's board to the right of the sidebar
     for y, row in enumerate(board):
         for x, block in enumerate(row):
             if block:
                 color = SHAPE_COLORS[block - 1]
-                pygame.draw.rect(screen, color, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
-                pygame.draw.rect(screen, BLACK, ((x + WIDTH) * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+                pygame.draw.rect(screen, color, (x * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+                pygame.draw.rect(screen, BLACK, (x * BLOCK_SIZE + offset_x, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+
+def send_board_to_server(tetris):
+    try:
+        board_data = tetris.serialize_board()
+        client.send(bytes(board_data, "utf-8"))
+    except Exception as e:
+        print(f"Error sending board data: {e}")
                 
 # Additional global variables to track game state
 global GAME_STATE, start_pressed, opponent_connected, client
@@ -435,6 +443,10 @@ def main():
 
     # Start a thread to check for opponent connection
     threading.Thread(target=check_opponent_connection, daemon=True).start()
+
+    opponent_board = [[0] * WIDTH for _ in range(HEIGHT)]
+
+    buffer = ""
 
     while True:
         screen.fill(BLACK)
@@ -486,9 +498,26 @@ def main():
                         tetris.rotate_piece_clockwise()
                     elif event.key == pygame.K_SPACE:
                         tetris.hard_drop()
+            # Send the player's board to the server
+            send_board_to_server(tetris)
 
+            # Check for opponent board data
+            ready_to_read, _, _ = select.select([client], [], [], 0)
+            if ready_to_read:
+                data = client.recv(4096).decode("utf-8")
+                buffer += data
+                while '\n' in buffer:
+                    json_object, buffer = buffer.split('\n', 1)
+                    if json_object.strip():
+                        try:
+                            opponent_board = json.loads(json_object)
+                        except json.JSONDecodeError as e:
+                            print(f"JSON decode error: {e}")
+
+            # Draw the player's board and the opponent's board
             tetris.update()
             tetris.draw(screen)
+            draw_opponent_board(screen, opponent_board)
         
         pygame.display.flip()
         clock.tick(FPS)

@@ -46,6 +46,26 @@ def draw_board(screen, board, offset=0):
 # Updated server code to ensure synchronized start
 clients_ready = set()  # Track ready clients
 
+#def handle_client_data(client_socket, offset):
+#    try:
+#        data = client_socket.recv(4096)
+#        if data:
+#            decoded_data = data.decode("utf-8")
+#            if decoded_data == "ready":
+#                # Once one client sends "ready", broadcast "start" to both clients
+#                for sock in clients.keys():
+#                    sock.send(bytes("start", "utf-8"))
+#            else:
+#                broadcast_data(client_socket, data)  # Broadcast received board state
+#                decoded_board = deserialize_board(data)
+#                draw_board(screen, decoded_board, offset)
+#                pygame.display.flip()
+#        else:
+#            return False
+#    except Exception as e:
+#        print(f"Error handling client data: {e}")
+#        return False
+#    return True
 def handle_client_data(client_socket, offset):
     try:
         data = client_socket.recv(4096)
@@ -56,10 +76,8 @@ def handle_client_data(client_socket, offset):
                 for sock in clients.keys():
                     sock.send(bytes("start", "utf-8"))
             else:
-                broadcast_data(client_socket, data)  # Broadcast received board state
-                decoded_board = deserialize_board(data)
-                draw_board(screen, decoded_board, offset)
-                pygame.display.flip()
+                # Assume the received data is the serialized board state
+                broadcast_data(client_socket, data)  # Broadcast the received board state to other clients
         else:
             return False
     except Exception as e:
@@ -67,18 +85,31 @@ def handle_client_data(client_socket, offset):
         return False
     return True
 
+#def broadcast_data(sender_socket, data):
+#    for client_socket in clients.keys():
+#        if client_socket != sender_socket:  # Don't send back to the sender
+#            try:
+#                # Ensure data is in bytes before sending
+#                if isinstance(data, str):
+#                    data = data.encode("utf-8")
+#                client_socket.send(data)
+#            except Exception as e:
+#                print(f"Error broadcasting to {clients[client_socket]}: {e}")
+#                client_socket.close()
+#                del clients[client_socket]
 def broadcast_data(sender_socket, data):
     for client_socket in clients.keys():
         if client_socket != sender_socket:  # Don't send back to the sender
             try:
-                # Ensure data is in bytes before sending
                 if isinstance(data, str):
                     data = data.encode("utf-8")
+                data += b'\n'  # Append newline to indicate end of each JSON object
                 client_socket.send(data)
             except Exception as e:
                 print(f"Error broadcasting to {clients[client_socket]}: {e}")
                 client_socket.close()
                 del clients[client_socket]
+
 
 #def broadcast_data(sender_socket, data):
 #    for client_socket in clients.keys():
