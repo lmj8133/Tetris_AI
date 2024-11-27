@@ -499,7 +499,7 @@ def key_setting_screen(screen, key_settings):
             screen.blit(text, (50, y_offset))
             y_offset += 50
 
-        instruction_text = font.render("Press ENTER to change key, ESC to exit", True, (255, 255, 255))
+        instruction_text = font.render("'ENTER': change key    'ESC': exit    'S': save and start", True, (255, 255, 255))
         screen.blit(instruction_text, (50, 50))
 
         pygame.display.flip()
@@ -507,7 +507,7 @@ def key_setting_screen(screen, key_settings):
         # Update flash timer
         if waiting_for_input:
             flash_timer += 1
-            if flash_timer > 600:  # Toggle flash state every 30 frames
+            if flash_timer > 30:  # Toggle flash state every 30 frames
                 flash_state = not flash_state
                 flash_timer = 0
 
@@ -530,6 +530,9 @@ def key_setting_screen(screen, key_settings):
                 elif event.key == pygame.K_ESCAPE:
                     save_key_settings(key_settings)
                     return
+                elif event.key == pygame.K_s:
+                    save_key_settings(key_settings)
+                    return "opening"
 
 def main():
     global GAME_STATE, client  # Declare client and GAME_STATE as global to be accessible here and in the thread
@@ -556,7 +559,13 @@ def main():
         screen.fill(BLACK)
         
         if GAME_STATE == "standby":
-            key_setting_screen(screen, key_settings)
+           # font = pygame.font.Font(None, 36)
+           # message = "Press 'ENTER' to Start or 'S' for Settings."
+           # text = font.render(message, True, (255, 255, 255))
+           # screen.blit(text, (50, 300))
+            result = key_setting_screen(screen, key_settings)
+            if result == "opening":
+                GAME_STATE = "opening"
 
         elif GAME_STATE == "opening":
             # Start a thread to check for opponent connection
