@@ -3,3 +3,4 @@
 tags
 *.taghl
 tetris_env/*
+*.json

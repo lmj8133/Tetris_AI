@@ -432,7 +432,7 @@ def send_board_to_server(tetris):
                 
 # Additional global variables to track game state
 global GAME_STATE, opponent_connected, client
-GAME_STATE = "opening"  # Possible values: "opening", "countdown", "playing"
+GAME_STATE = "standby"  # Possible values: "standby", "countdown", "playing"
 opponent_connected = False
 
 # Define function to check opponent connection
@@ -448,6 +448,89 @@ def check_opponent_connection():
             elif opponent_status == "start":
                 GAME_STATE = "countdown"  # Both clients will start the countdown when "start" is received
 
+def load_key_settings():
+    # Load key settings from a file
+    try:
+        with open('key_settings.json', 'r') as f:
+            key_settings = json.load(f)
+    except FileNotFoundError:
+        # Default key settings
+        key_settings = {
+            "move_left": pygame.K_LEFT,
+            "move_right": pygame.K_RIGHT,
+            "rotate_clockwise": pygame.K_UP,
+            "rotate_counterclockwise": pygame.K_z,
+            "rotate_180": pygame.K_x,
+            "soft_drop": pygame.K_DOWN,
+            "hard_drop": pygame.K_SPACE,
+            "hold": pygame.K_c
+        }
+    return key_settings
+
+def save_key_settings(key_settings):
+    # Save key settings to a file
+    with open('key_settings.json', 'w') as f:
+        json.dump(key_settings, f)
+
+def key_setting_screen(screen, key_settings):
+    font = pygame.font.Font(None, 36)
+    setting_keys = list(key_settings.keys())
+    setting_index = 0
+    waiting_for_input = False
+    flash_timer = 0
+    flash_state = True
+
+    while True:
+        screen.fill((0, 0, 0))
+        y_offset = 100
+        for i, key in enumerate(setting_keys):
+            color = (255, 255, 255) if i == setting_index else (150, 150, 150)
+            key_name = pygame.key.name(key_settings[key])
+
+            if waiting_for_input and i == setting_index:
+                # Flash only the key name while waiting for input
+                if flash_state:
+                    text = font.render(f"{key}: {key_name}", True, color)
+                else:
+                    text = font.render(f"{key}: ", True, color)
+            else:
+                text = font.render(f"{key}: {key_name}", True, color)
+
+            screen.blit(text, (50, y_offset))
+            y_offset += 50
+
+        instruction_text = font.render("Press ENTER to change key, ESC to exit", True, (255, 255, 255))
+        screen.blit(instruction_text, (50, 50))
+
+        pygame.display.flip()
+
+        # Update flash timer
+        if waiting_for_input:
+            flash_timer += 1
+            if flash_timer > 600:  # Toggle flash state every 30 frames
+                flash_state = not flash_state
+                flash_timer = 0
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+            elif event.type == pygame.KEYDOWN:
+                if waiting_for_input:
+                    key_settings[setting_keys[setting_index]] = event.key
+                    waiting_for_input = False
+                    flash_state = True
+                    flash_timer = 0
+                elif event.key == pygame.K_RETURN:
+                    waiting_for_input = True
+                elif event.key == pygame.K_DOWN:
+                    setting_index = (setting_index + 1) % len(setting_keys)
+                elif event.key == pygame.K_UP:
+                    setting_index = (setting_index - 1) % len(setting_keys)
+                elif event.key == pygame.K_ESCAPE:
+                    save_key_settings(key_settings)
+                    return
+
 def main():
     global GAME_STATE, client  # Declare client and GAME_STATE as global to be accessible here and in the thread
 
@@ -455,6 +538,7 @@ def main():
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
     pygame.display.set_caption('Tetris')
 
+    key_settings = load_key_settings()
     clock = pygame.time.Clock()
     tetris = Tetris()
 
@@ -463,8 +547,6 @@ def main():
     #client.connect(('192.168.3.138', 5555))
     client.connect(('localhost', 5555))
 
-    # Start a thread to check for opponent connection
-    threading.Thread(target=check_opponent_connection, daemon=True).start()
 
     opponent_board = [[0] * WIDTH for _ in range(HEIGHT)]
 
@@ -473,7 +555,12 @@ def main():
     while True:
         screen.fill(BLACK)
         
-        if GAME_STATE == "opening":
+        if GAME_STATE == "standby":
+            key_setting_screen(screen, key_settings)
+
+        elif GAME_STATE == "opening":
+            # Start a thread to check for opponent connection
+            threading.Thread(target=check_opponent_connection, daemon=True).start()
             # Display waiting message
             font = pygame.font.Font(None, 36)
             if opponent_connected:
