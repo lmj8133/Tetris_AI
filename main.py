@@ -408,6 +408,7 @@ def reconnect_to_server():
     while True:
         try:
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            #client.connect(('192.168.3.138', 5555))
             client.connect(('localhost', 5555))
             print("Reconnected to the server successfully.")
             break  # Exit the loop once reconnected
@@ -439,9 +440,8 @@ def send_board_to_server(tetris):
         print(f"Error sending board data: {e}")
                 
 # Additional global variables to track game state
-global GAME_STATE, start_pressed, opponent_connected, client
+global GAME_STATE, opponent_connected, client
 GAME_STATE = "opening"  # Possible values: "opening", "countdown", "playing"
-start_pressed = False
 opponent_connected = False
 
 # Define function to check opponent connection
@@ -456,10 +456,9 @@ def check_opponent_connection():
                 opponent_connected = True
             elif opponent_status == "start":
                 GAME_STATE = "countdown"  # Both clients will start the countdown when "start" is received
-                break
 
 def main():
-    global GAME_STATE, client, start_pressed  # Declare client and GAME_STATE as global to be accessible here and in the thread
+    global GAME_STATE, client  # Declare client and GAME_STATE as global to be accessible here and in the thread
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
@@ -470,6 +469,7 @@ def main():
 
     tetris.reset()
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #client.connect(('192.168.3.138', 5555))
     client.connect(('localhost', 5555))
 
     # Start a thread to check for opponent connection
@@ -499,7 +499,6 @@ def main():
                     quit()
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN and opponent_connected:
-                        start_pressed = True
                         client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
         
         elif GAME_STATE == "countdown":
@@ -576,11 +575,41 @@ def main():
                         except json.JSONDecodeError as e:
                             print(f"JSON decode error: {e}")
 
+            if tetris.is_game_over():
+                client.send(bytes("gameover", "utf-8"))
+                GAME_STATE = "gameover"
+                print("Game over.")
+                #tetris.pause_game()
+                #tetris.reset()
+            ready_to_read, _, _ = select.select([client], [], [], 1)
+            if ready_to_read:
+                opponent_status = client.recv(4096).decode("utf-8")
+                if opponent_status == "gameover":
+                    GAME_STATE = "gameover" 
+                    print("Opponent game over.")
+
             # Draw the player's board and the opponent's board
             tetris.update_das()
             tetris.update()
             tetris.draw(screen)
             draw_opponent_board(screen, opponent_board)
+        elif GAME_STATE == "gameover":
+            # Display game over message
+            font = pygame.font.Font(None, 36)
+            message = "Game Over. Press 'P' to Restart."
+            text = font.render(message, True, WHITE)
+            screen.blit(text, (SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+                elif event.type == pygame.KEYDOWN:
+                    # Restart
+                    if event.key == pygame.K_p:
+                        tetris.reset()
+                        GAME_STATE = "opening"
+                        #client.send(bytes("ready", "utf-8"))
         
         pygame.display.flip()
         clock.tick(FPS)

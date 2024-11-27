@@ -73,8 +73,15 @@ def handle_client_data(client_socket, offset):
             decoded_data = data.decode("utf-8")
             if decoded_data == "ready":
                 # Once one client sends "ready", broadcast "start" to both clients
+                print(f"Client {clients[client_socket]} is ready")
                 for sock in clients.keys():
                     sock.send(bytes("start", "utf-8"))
+                    print(f"Sent 'start' to {clients[sock]}")
+            elif decoded_data == "gameover":
+                # Once one client sends "gameover", broadcast "gameover" to both clients
+                for sock in clients.keys():
+                    sock.send(bytes("gameover", "utf-8"))
+                    print(f"Sent 'gameover' to {clients[sock]}")
             else:
                 # Assume the received data is either board data or garbage data
                 broadcast_data(client_socket, data)  # Broadcast the received data to other clients
