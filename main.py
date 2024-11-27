@@ -609,6 +609,7 @@ def main():
                     if event.key == pygame.K_p:
                         tetris.reset()
                         GAME_STATE = "opening"
+                        threading.Thread(target=check_opponent_connection, daemon=True).start()
                         #client.send(bytes("ready", "utf-8"))
         
         pygame.display.flip()
