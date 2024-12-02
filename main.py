@@ -443,6 +443,7 @@ def check_opponent_connection():
     if ready_to_read:
         opponent_status = client.recv(4096).decode("utf-8")
         if opponent_status == "connected":
+            print("Opponent connected.")
             opponent_connected = True
         elif opponent_status == "start":
             GAME_STATE = "countdown"  # Both clients will start the countdown when "start" is received
@@ -676,7 +677,6 @@ def main():
                         tetris.reset()
                         opponent_connected = False  # Reset opponent connection
                         GAME_STATE = "opening"
-                        client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
 
         pygame.display.flip()
         clock.tick(FPS)

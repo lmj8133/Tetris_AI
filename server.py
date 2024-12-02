@@ -28,18 +28,21 @@ def draw_board(screen, board, offset=0):
                 color = SHAPE_COLORS[block - 1]  # Adjust color index
                 draw_block(screen, color, x, y, offset)
 
-clients_ready = set()  # Track ready clients
+clients_ready = 0  # Track ready clients
 
 def handle_client_data(client_socket, offset):
+    global clients_ready
     try:
         data = client_socket.recv(4096)
         if data:
             decoded_data = data.decode("utf-8")
             if decoded_data == "ready":
                 print(f"Client {clients[client_socket]} is ready")
-                if len(clients) == 2:
+                clients_ready += 1
+                if clients_ready == 2:
                     for sock in clients.keys():
                         sock.send(bytes("connected", "utf-8"))  # Notify clients that they are connected
+                        clients_ready = 0
             elif decoded_data == "ready_to_start":
                 # Once one client sends "ready", broadcast "start" to both clients
                 print(f"Client {clients[client_socket]} is ready")
