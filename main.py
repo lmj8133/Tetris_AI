@@ -636,8 +636,6 @@ def main():
                             data_dict = json.loads(json_object)
                             if "garbage" in data_dict:
                                 tetris.add_garbage_lines(data_dict["garbage"])
-                            elif data_dict == "gameover":
-                                GAME_STATE = "gameover"
                             else:
                                 opponent_board = data_dict
                         except json.JSONDecodeError as e:
@@ -646,6 +644,8 @@ def main():
             # Check if the game is over
             if tetris.is_game_over():
                 client.send(bytes("gameover", "utf-8"))
+                GAME_STATE = "gameover"
+            if data == "gameover":
                 GAME_STATE = "gameover"
 
             # Draw the player's board and the opponent's board
@@ -670,7 +670,7 @@ def main():
                     if event.key == pygame.K_p:
                         tetris.reset()
                         GAME_STATE = "opening"
-                        opponent_connected = False  # Reset opponent connection
+                        opponent_connected = True  # Reset opponent connection
 
         pygame.display.flip()
         clock.tick(FPS)
