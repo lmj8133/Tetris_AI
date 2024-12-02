@@ -534,7 +534,7 @@ def key_setting_screen(screen, key_settings):
                     return "opening"
 
 def main():
-    global GAME_STATE, client, opponent_connected  # Declare client and GAME_STATE as global
+    global GAME_STATE, client, opponent_connected, sent_ready  # Declare client and GAME_STATE as global
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
@@ -553,6 +553,7 @@ def main():
 
     # Keep track of opponent readiness
     opponent_connected = False
+    sent_ready = False
 
     while True:
         screen.fill(BLACK)
@@ -569,8 +570,12 @@ def main():
             font = pygame.font.Font(None, 36)
             if opponent_connected:
                 message = "Opponent Connected. Press 'ENTER' to Begin."
+                sent_ready = False
             else:
                 message = "Waiting for Opponent to Connect..."
+                if not sent_ready:
+                    client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
+                    sent_ready = True
             text = font.render(message, True, WHITE)
             screen.blit(text, (SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
 
@@ -581,7 +586,7 @@ def main():
                     quit()
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN and opponent_connected:
-                        client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
+                        client.send(bytes("ready_to_start", "utf-8"))  # Notify the server that the client is ready
                         GAME_STATE = "countdown"
 
         elif GAME_STATE == "countdown":
@@ -669,8 +674,9 @@ def main():
                     # Restart
                     if event.key == pygame.K_p:
                         tetris.reset()
+                        opponent_connected = False  # Reset opponent connection
                         GAME_STATE = "opening"
-                        opponent_connected = True  # Reset opponent connection
+                        client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
 
         pygame.display.flip()
         clock.tick(FPS)

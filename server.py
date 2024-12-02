@@ -36,6 +36,11 @@ def handle_client_data(client_socket, offset):
         if data:
             decoded_data = data.decode("utf-8")
             if decoded_data == "ready":
+                print(f"Client {clients[client_socket]} is ready")
+                if len(clients) == 2:
+                    for sock in clients.keys():
+                        sock.send(bytes("connected", "utf-8"))  # Notify clients that they are connected
+            elif decoded_data == "ready_to_start":
                 # Once one client sends "ready", broadcast "start" to both clients
                 print(f"Client {clients[client_socket]} is ready")
                 for sock in clients.keys():
@@ -96,9 +101,9 @@ try:
                 client.setblocking(0)
                 clients[client] = address
                 client_offsets[client] = len(clients) - 1  # Offset based on client count
-                if len(clients) == 2:
-                    for sock in clients.keys():
-                        sock.send(bytes("connected", "utf-8"))  # Notify clients that they are connected
+                #if len(clients) == 2:
+                #    for sock in clients.keys():
+                #        sock.send(bytes("connected", "utf-8"))  # Notify clients that they are connected
             else:
                 # Handle client data
                 offset = client_offsets[sock] * WIDTH
