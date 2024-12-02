@@ -439,14 +439,13 @@ opponent_connected = False
 def check_opponent_connection():
     global opponent_connected, client, GAME_STATE
 
-    while GAME_STATE == "opening":
-        ready_to_read, _, _ = select.select([client], [], [], 1)
-        if ready_to_read:
-            opponent_status = client.recv(4096).decode("utf-8")
-            if opponent_status == "connected":
-                opponent_connected = True
-            elif opponent_status == "start":
-                GAME_STATE = "countdown"  # Both clients will start the countdown when "start" is received
+    ready_to_read, _, _ = select.select([client], [], [], 1)
+    if ready_to_read:
+        opponent_status = client.recv(4096).decode("utf-8")
+        if opponent_status == "connected":
+            opponent_connected = True
+        elif opponent_status == "start":
+            GAME_STATE = "countdown"  # Both clients will start the countdown when "start" is received
 
 def load_key_settings():
     # Load key settings from a file
@@ -565,14 +564,7 @@ def main():
 
         elif GAME_STATE == "opening":
             # Check for opponent connection by reading from the socket
-            ready_to_read, _, _ = select.select([client], [], [], 0.1)
-            if ready_to_read:
-                data = client.recv(4096).decode("utf-8")
-                if data.strip() == "connected":
-                    opponent_connected = True
-                elif data.strip() == "start":
-                    GAME_STATE = "countdown"
-
+            check_opponent_connection()
             # Display waiting message
             font = pygame.font.Font(None, 36)
             if opponent_connected:
