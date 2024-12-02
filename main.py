@@ -535,7 +535,7 @@ def key_setting_screen(screen, key_settings):
                     return "opening"
 
 def main():
-    global GAME_STATE, client  # Declare client and GAME_STATE as global to be accessible here and in the thread
+    global GAME_STATE, client, opponent_connected  # Declare client and GAME_STATE as global
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH + 200, SCREEN_HEIGHT))  # Adjust the width to make room for upcoming pieces
@@ -547,29 +547,32 @@ def main():
 
     tetris.reset()
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #client.connect(('192.168.3.138', 5555))
-    client.connect(('localhost', 5555))
-
+    client.connect(('localhost', 5555))  # Connect to the server
 
     opponent_board = [[0] * WIDTH for _ in range(HEIGHT)]
-
     buffer = ""
+
+    # Keep track of opponent readiness
+    opponent_connected = False
 
     while True:
         screen.fill(BLACK)
-        
+
         if GAME_STATE == "standby":
-           # font = pygame.font.Font(None, 36)
-           # message = "Press 'ENTER' to Start or 'S' for Settings."
-           # text = font.render(message, True, (255, 255, 255))
-           # screen.blit(text, (50, 300))
             result = key_setting_screen(screen, key_settings)
             if result == "opening":
                 GAME_STATE = "opening"
 
         elif GAME_STATE == "opening":
-            # Start a thread to check for opponent connection
-            threading.Thread(target=check_opponent_connection, daemon=True).start()
+            # Check for opponent connection by reading from the socket
+            ready_to_read, _, _ = select.select([client], [], [], 0.1)
+            if ready_to_read:
+                data = client.recv(4096).decode("utf-8")
+                if data.strip() == "connected":
+                    opponent_connected = True
+                elif data.strip() == "start":
+                    GAME_STATE = "countdown"
+
             # Display waiting message
             font = pygame.font.Font(None, 36)
             if opponent_connected:
@@ -587,7 +590,8 @@ def main():
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RETURN and opponent_connected:
                         client.send(bytes("ready", "utf-8"))  # Notify the server that the client is ready
-        
+                        GAME_STATE = "countdown"
+
         elif GAME_STATE == "countdown":
             # Countdown from 5 seconds before starting
             for i in range(5, 0, -1):
@@ -607,46 +611,29 @@ def main():
                     pygame.quit()
                     quit()
                 elif event.type == pygame.KEYDOWN:
-                    # Move left
+                    # Handle keypresses for player actions
                     if event.key == pygame.K_j:
                         tetris.move_piece(-1, 0)
-                        tetris.das_direction = (-1, 0)
-                    # Move right
-                    if event.key == pygame.K_l:
+                    elif event.key == pygame.K_l:
                         tetris.move_piece(1, 0)
-                        tetris.das_direction = (1, 0)
-                    # Rotate clockwise
-                    if event.key == pygame.K_f:
+                    elif event.key == pygame.K_f:
                         tetris.rotate_piece_clockwise()
-                    # Rotate counter-clockwise
-                    if event.key == pygame.K_s:
+                    elif event.key == pygame.K_s:
                         tetris.rotate_piece_counterclockwise()
-                    # Rotate 180 degree
-                    if event.key == pygame.K_d:
+                    elif event.key == pygame.K_d:
                         tetris.rotate_piece_180()
-                    # Soft drop
-                    if event.key == pygame.K_k:
+                    elif event.key == pygame.K_k:
                         tetris.move_piece(0, 1)
-                        tetris.das_direction = (0, 1)
-                    # Hard drop
-                    if event.key == pygame.K_SPACE:
+                    elif event.key == pygame.K_SPACE:
                         tetris.hard_drop()
-                    # Hold
-                    if event.key == pygame.K_i:
+                    elif event.key == pygame.K_i:
                         tetris.hold_piece()
-                if event.type == pygame.KEYUP:
-                    if (event.key == pygame.K_j) or \
-                       (event.key == pygame.K_l) or \
-                       (event.key == pygame.K_k):
-                        tetris.das_direction = None
-                        tetris.falling_timer = 0
-                        tetris.das_timer = 0
 
             # Send the player's board to the server
             send_board_to_server(tetris)
 
             # Check for opponent board data or garbage data
-            ready_to_read, _, _ = select.select([client], [], [], 0)
+            ready_to_read, _, _ = select.select([client], [], [], 0.1)
             if ready_to_read:
                 data = client.recv(4096).decode("utf-8")
                 buffer += data
@@ -657,27 +644,24 @@ def main():
                             data_dict = json.loads(json_object)
                             if "garbage" in data_dict:
                                 tetris.add_garbage_lines(data_dict["garbage"])
+                            elif data_dict == "gameover":
+                                GAME_STATE = "gameover"
                             else:
                                 opponent_board = data_dict
                         except json.JSONDecodeError as e:
                             print(f"JSON decode error: {e}")
 
+            # Check if the game is over
             if tetris.is_game_over():
                 client.send(bytes("gameover", "utf-8"))
                 GAME_STATE = "gameover"
-                print("Game over.")
-            ready_to_read, _, _ = select.select([client], [], [], 1)
-            if ready_to_read:
-                opponent_status = client.recv(4096).decode("utf-8")
-                if opponent_status == "gameover":
-                    GAME_STATE = "gameover" 
-                    print("Opponent game over.")
 
             # Draw the player's board and the opponent's board
             tetris.update_das()
             tetris.update()
             tetris.draw(screen)
             draw_opponent_board(screen, opponent_board)
+
         elif GAME_STATE == "gameover":
             # Display game over message
             font = pygame.font.Font(None, 36)
@@ -694,8 +678,8 @@ def main():
                     if event.key == pygame.K_p:
                         tetris.reset()
                         GAME_STATE = "opening"
-                        threading.Thread(target=check_opponent_connection, daemon=True).start()
-        
+                        opponent_connected = False  # Reset opponent connection
+
         pygame.display.flip()
         clock.tick(FPS)
 
