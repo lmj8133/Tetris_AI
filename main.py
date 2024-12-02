@@ -610,21 +610,22 @@ def main():
                     quit()
                 elif event.type == pygame.KEYDOWN:
                     # Handle keypresses for player actions
-                    if event.key == pygame.K_j:
+                    # According to the key settings
+                    if event.key == key_settings["move_left"]:
                         tetris.move_piece(-1, 0)
-                    elif event.key == pygame.K_l:
+                    elif event.key == key_settings["move_right"]:
                         tetris.move_piece(1, 0)
-                    elif event.key == pygame.K_f:
+                    elif event.key == key_settings["rotate_clockwise"]:
                         tetris.rotate_piece_clockwise()
-                    elif event.key == pygame.K_s:
+                    elif event.key == key_settings["rotate_counterclockwise"]:
                         tetris.rotate_piece_counterclockwise()
-                    elif event.key == pygame.K_d:
+                    elif event.key == key_settings["rotate_180"]:
                         tetris.rotate_piece_180()
-                    elif event.key == pygame.K_k:
+                    elif event.key == key_settings["soft_drop"]:
                         tetris.move_piece(0, 1)
-                    elif event.key == pygame.K_SPACE:
+                    elif event.key == key_settings["hard_drop"]:
                         tetris.hard_drop()
-                    elif event.key == pygame.K_i:
+                    elif event.key == key_settings["hold"]:
                         tetris.hold_piece()
 
             # Send the player's board to the server
